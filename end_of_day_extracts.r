@@ -87,7 +87,8 @@ get_covid_cases_db_con <- function(
   return(con)  
 }
 
-
+##########################
+# CHECK ... DO WE HAVE A CONNECTION
 get_covid_cases_db_con()
 
 
@@ -258,24 +259,30 @@ get_flat_case_tbl <- function(con = get_covid_cases_db_con(), flatten = F){
     print("warning flatten not implemented yet in get_flat_case_tbl!, this is for Dbs with relational stuffs.....")
     return(NULL)
   }
-#   df_dts <- 
-#     bind_cols(
-#   ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
-#     select_if(is.character) %>% 
-#     mutate_all(function(x){as.Date(as.numeric(x),origin = "1899-12-30")})
-# ,
-#   lgl_dt <-   
-#   ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
-#     select_if(is.logical) %>% 
-#     mutate_all(function(x){as.Date(as.numeric(x),origin = "1899-12-30")})
-#   
-#     ) 
+  df_dts <-
+    bind_cols(
+  ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
+    select_if(is.character) %>%
+    mutate_all(function(x){as.Date(as.numeric(x),origin = "1899-12-30")})
+,
+  ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
+    select_if(is.logical) %>%
+    mutate_all(function(x){as.Date(as.numeric(x),origin = "1899-12-30")})
+
+    )
+  
+  ret_df <- bind_cols(
+  ret_df[! colnames(ret_df) %in% colnames(df_dts)] ,
+  df_dts
+  )
+    
+    
   return(ret_df)
 }
 
 ########################
 #chache the table
-get_flat_case_tbl()
+get_flat_case_tbl() #%>% select(matches("Date", ignore.case = F))
 
 
 
@@ -388,7 +395,14 @@ get_case_data_domestic_epi_dir <- function(report_filter = "qry_allcases",
   get_reports_dir_locations(...) %>% 
     filter(report == report_filter) %>% pull(dir)
 }
-
+get_case_db_errs_dir <- function(report_filter = "db_errs", 
+                                           ...){
+  #' Return directory needed for the 'qry_allcases' report 
+  #'
+  #'
+  get_reports_dir_locations(...) %>% 
+    filter(report == report_filter) %>% pull(dir)
+}
 
 
 get_domestic_survelance_cols <- function(report_filter = "Domestic surveillance", 
@@ -879,6 +893,259 @@ get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(),
 }
 
 
+
+
+
+
+
+
+######################################
+#
+get_db_error_report_by_case_error_Residency_canadian<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    filter(Residency == "" & nchar(ResidenceCountry) > 0) %>% 
+    select(PHACID) %>% 
+    mutate(err = "Residency is unspecified, yet ResidenceCountry is not blank.")%>% collect() %>% 
+    mutate(typ = "Residency" )
+}
+get_db_error_report_by_case_error_Residency_canadian_but_not<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    filter(Residency == "Canadian resident" & !(ResidenceCountry == "CANADA")) %>% 
+    select(PHACID) %>% 
+    mutate(err = "Residency is Canadian, yet ResidenceCountry is not.")%>% collect() %>% 
+    mutate(typ = "Residency" )
+}
+get_db_error_report_by_case_error_Age_Age_group<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    filter(!is.na(Age) & (tolower(AgeGroup10) == tolower("Unknown") | tolower(AgeGroup20) == tolower("Unknown") )) %>% 
+    select(PHACID) %>% 
+    mutate(err = "Exact Age is given but Agegroup is listed as unkown.")%>% collect() %>% 
+    mutate(typ = "Age" )
+}
+get_db_error_report_by_case_error_Age_Age_units<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    filter(!is.na(Age) & AgeUnit == "") %>% 
+    select(PHACID) %>% 
+    mutate(err = "Exact Age is given but Age units are not.") %>% collect() %>% 
+    mutate(typ = "Age" )
+}
+
+
+get_db_error_report_by_case_Sym<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    filter(tolower(Asymptomatic) == "yes" ) %>% 
+    select(PHACID, Asymptomatic, matches("^Sym")) %>% 
+    collect() %>% 
+    pivot_longer(matches("^Sym")) %>% 
+    filter(! is.na(value)) %>% 
+    filter(value != "" & value != ".", tolower(value) != tolower("No") & tolower(value) != tolower("Unknown")) %>% 
+    mutate(err = paste0("'",name,"' is '", value, "'") ) %>% 
+    group_by(PHACID) %>% 
+    summarise(err = paste0(err, collapse = " and") ) %>% 
+    mutate(err = paste0("Asymptomatic is 'yes' but",  err, collapse = " and ") ) %>% 
+    select(PHACID, err) %>% 
+    mutate(typ = "symptoms" )
+}
+
+get_db_error_report_by_case_Hosp<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    select(PHACID, Hosp, HospStartDate, HospEndDate) %>% 
+    #filter(tolower(Hosp) == "no" | tolower(Hosp) == "unknown" | Hosp == "") %>% 
+    filter(!tolower(Hosp) == "yes") %>% 
+    filter(! is.na(HospStartDate) | ! is.na(HospEndDate)) %>% 
+    select(PHACID) %>% 
+    mutate(err = paste0("A hospital date is listed but Hosp is not Yes") ) %>% 
+    select(PHACID, err) %>% collect() %>% 
+    mutate(typ = "Hosp" )
+}
+
+get_db_error_report_by_case_ICU<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    select(PHACID, ICU, ICUStartDate, ICUEndDate) %>% 
+    #filter(tolower(Hosp) == "no" | tolower(Hosp) == "unknown" | Hosp == "") %>% 
+    filter(!tolower(ICU) == "yes") %>% 
+    filter(! is.na(ICUStartDate) | ! is.na(ICUEndDate)) %>% 
+    select(PHACID) %>% 
+    mutate(err = paste0("A ICU date is listed but ICU is not Yes") ) %>% 
+    select(PHACID, err) %>% collect() %>%
+    mutate(typ = "ICU" )
+}
+
+
+get_db_error_report_by_case_Isolation<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    select(PHACID, Isolation, IsolationStartDate, IsolationEndDate) %>% 
+    #filter(tolower(Hosp) == "no" | tolower(Hosp) == "unknown" | Hosp == "") %>% 
+    filter(!tolower(Isolation) == "yes") %>% 
+    filter(! is.na(IsolationStartDate) | ! is.na(IsolationEndDate) ) %>% 
+    select(PHACID) %>% 
+    mutate(err = paste0("A Isolation date is listed but Isolation is not Yes") ) %>% 
+    select(PHACID, err) %>% collect() %>% 
+    mutate(typ = "Isolation" )
+}
+
+
+get_db_error_report_by_case_vent<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    filter(!tolower(MechanicalVent) == "yes") %>% 
+    filter(! is.na(VentStartDate) | ! is.na(VentEndDate) ) %>% 
+    select(PHACID) %>% 
+    collect() %>% 
+    mutate(err = paste0("A vent date is listed but MechanicalVent is not Yes") ) %>% 
+    select(PHACID, err) %>% 
+    mutate(typ = "vent" )
+}
+get_db_error_report_by_case_Reovered<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    select(PHACID, Disposition, RecoveryDate) %>% 
+    #filter(tolower(Hosp) == "no" | tolower(Hosp) == "unknown" | Hosp == "") %>% 
+    filter(!tolower(Disposition) == "recovered") %>% 
+    filter(! is.na(RecoveryDate) ) %>% 
+    select(PHACID, RecoveryDate, Disposition) %>% 
+    mutate(err = paste0("Recovery date of '",RecoveryDate,"' is listed but Disposition is '", Disposition, "'") ) %>% 
+    select(PHACID, err)  %>% collect() %>% 
+    mutate(typ = "Recovered" )
+}
+get_db_error_report_by_case_Death<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    select(PHACID, Disposition, DeathDate) %>% 
+    #filter(tolower(Hosp) == "no" | tolower(Hosp) == "unknown" | Hosp == "") %>% 
+    filter(!tolower(Disposition) == "deceased") %>% 
+    filter(! is.na(DeathDate) ) %>% 
+    select(PHACID, DeathDate, Disposition) %>% 
+    mutate(err = paste0("Death date of '",DeathDate,"' is listed but Disposition is '", Disposition, "'") ) %>% 
+    select(PHACID, err)  %>% collect() %>% 
+    mutate(typ = "Death" )
+}
+
+
+
+get_db_error_report_by_case_travel<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  tmp_df <- 
+    a_tbl %>% 
+    filter((!tolower(Travel) == "yes")) %>% 
+    select(PHACID, matches("^travel")) %>% collect() 
+  
+  tmp_df %>% 
+    mutate_all(as.character) %>% 
+    pivot_longer(matches("^travel")) %>% 
+    filter(name != "Travel") %>% 
+    filter(!is.na(value)) %>% 
+    filter(value != "") %>% 
+    mutate(err = paste0("'",name,"' is '", value, "'") ) %>% 
+    select(PHACID, err)  %>%
+    group_by(PHACID) %>%
+    summarise(err = paste0(err, collapse = " and ")) %>% 
+    mutate(err = paste0("travel is not yes but ", err) ) %>% 
+    mutate(typ = "Travel" )
+}
+
+get_db_error_report_by_case_close<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  tmp_df <- 
+    a_tbl %>% 
+    filter((!tolower(CloseContactCase) == "yes")) %>% 
+    select(PHACID, matches("^CloseContactCase")) %>% collect() 
+  
+  tmp_df %>% 
+    mutate_all(as.character) %>% 
+    pivot_longer(matches("^CloseContactCase")) %>% 
+    filter(name != "CloseContactCase") %>% 
+    filter(!is.na(value) &  value != "") %>% 
+    mutate(err = paste0("'",name,"' is '", value, "'") ) %>% 
+    select(PHACID, err)  %>%
+    group_by(PHACID) %>%
+    summarise(err = paste0(err, collapse = " and ")) %>% 
+    mutate(err = paste0("CloseContactCase is not yes but ", err) ) %>% 
+    mutate(typ = "Close Contact" )
+}
+
+#get_db_error_report_by_case_date_diff <- function()
+
+
+
+
+get_db_error_report_by_case_Dead_and_alive<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    filter( (! is.na(DeathDate)) &  (! is.na(RecoveryDate)) ) %>% 
+    select(PHACID, DeathDate, RecoveryDate) %>% 
+    mutate(err = paste0("Both Death date '",DeathDate,"' and recovery date '",RecoveryDate,"' listed.") ) %>% 
+    select(PHACID, err)  %>% collect() %>% 
+    mutate(typ = "DeadorAlive" )
+}
+
+get_db_error_report_by_case_dead_before_onset<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    filter( (! is.na(DeathDate)) &  (! is.na(OnsetDate)) ) %>% 
+    filter( DeathDate < OnsetDate) %>% 
+    select(PHACID, DeathDate, OnsetDate) %>% 
+    mutate(err = paste0("Dead before Onset '",DeathDate,"' < '",OnsetDate,"'") ) %>% 
+    select(PHACID, err)  %>% collect() %>% 
+    mutate(typ = "Early Dead" )
+}
+
+
+get_db_error_report_by_case_recovered_before_onset<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+  a_tbl %>% 
+    filter( (! is.na(RecoveryDate)) &  (! is.na(OnsetDate)) ) %>% 
+    filter( RecoveryDate < OnsetDate) %>% 
+    select(PHACID, RecoveryDate, OnsetDate) %>% 
+    mutate(err = paste0("Recovered before Onset '",RecoveryDate,"' < '",OnsetDate,"'") ) %>% 
+    select(PHACID, err)  %>% collect() %>% 
+    mutate(typ = "Early Recovered" )
+}
+
+
+get_db_error_report_by_case_teasting_CloseContact_disagree<- function(con = get_db_con(), a_tbl = get_flat_case_tbl(con = con) ){
+  #' Generates Error List on DB
+  a_tbl %>% 
+    filter( TestingReason == "Contact of a case" &  (!CloseContactCase ==  "Yes")) %>% 
+    select(PHACID, TestingReason, CloseContactCase) %>% 
+    mutate(err = paste0("TestingReason '",TestingReason,"' disagrees with  CloseContactCase '",CloseContactCase,"'") ) %>% 
+    select(PHACID, err)  %>% collect() %>% 
+    mutate(typ = "Contact Testing Reason" )
+}
+
+
+
+###########################################
+#
+get_db_error_report_by_case <- function(con = get_db_con(), a_tbl = get_flat_case_tbl(con = con)){
+  
+  errs <- 
+    bind_rows(
+      get_db_error_report_by_case_error_Residency_canadian(a_tbl = a_tbl),
+      get_db_error_report_by_case_error_Residency_canadian_but_not(a_tbl = a_tbl),
+      get_db_error_report_by_case_error_Age_Age_group(a_tbl = a_tbl),
+      get_db_error_report_by_case_error_Age_Age_units(a_tbl = a_tbl),
+      get_db_error_report_by_case_Sym(a_tbl = a_tbl), 
+      get_db_error_report_by_case_Hosp(a_tbl = a_tbl),
+      get_db_error_report_by_case_ICU(a_tbl = a_tbl), 
+      get_db_error_report_by_case_Isolation(a_tbl = a_tbl), 
+      get_db_error_report_by_case_vent(a_tbl = a_tbl),
+      get_db_error_report_by_case_Reovered(a_tbl = a_tbl),
+      get_db_error_report_by_case_Death(a_tbl = a_tbl),
+      get_db_error_report_by_case_Dead_and_alive(a_tbl = a_tbl),
+      get_db_error_report_by_case_dead_before_onset(a_tbl = a_tbl),
+      get_db_error_report_by_case_recovered_before_onset(a_tbl = a_tbl),
+      get_db_error_report_by_case_travel(a_tbl = a_tbl),
+      get_db_error_report_by_case_teasting_CloseContact_disagree(a_tbl = a_tbl)
+      ) %>% arrange(PHACID)
+  
+  ids <- unique(errs$PHACID)
+
+  ret_val <-   
+  a_tbl %>% 
+    filter(PHACID %in% ids) %>% 
+    select(PHACID, PT,    PTCaseID, Classification, PHACReportedDate ) %>% 
+    left_join(errs, by = "PHACID") %>% 
+    arrange(desc(PHACReportedDate), PHACID, typ) %>% 
+    select(PHACID, PT, PTCaseID, typ, Classification,PHACReportedDate , err)
+  
+  return(ret_val)
+}
+
+
+
 extract_table_report <- function(df_fun, fn, report_filter, ...){
   
   if(!get_export_should_write(report_filter= report_filter)){
@@ -908,6 +1175,17 @@ extract_table_report <- function(df_fun, fn, report_filter, ...){
                       use_zip64 = FALSE)
   toc <- Sys.time()
   print(paste0("took ", format(toc - tic), " to write data"))
+}
+
+
+
+extract_case_db_errs <- function(){
+  extract_table_report(df_fun = get_db_error_report_by_case, 
+                       fn = path.expand( file.path(get_case_db_errs_dir(), 
+                                                   paste0("db_errs "  , format(Sys.Date() ,"%Y-%m-%d"), ".xlsx")
+                       )),
+                       report_filter = "db_errs"
+  )
 }
 
 
@@ -1008,6 +1286,7 @@ backup_db <- function(full_fn = file.path(DIR_OF_DB_2_BACK_UP, NAME_DB_2_BACK_UP
 # }
 do_end_of_day_tasks <- function(){
   backup_db()
+  extract_case_db_errs()
   extract_case_data_get_StatsCan()
   extract_case_data_domestic_epi()
   extract_case_data_domestic_survelance()
