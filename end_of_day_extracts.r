@@ -29,15 +29,15 @@ library(lubridate)
 #DIR_OF_DB = file.path("~", "..", "Desktop") 
 #NAME_DB = "COVID-19_v2.accdb"
 DIR_OF_DB = "~"
+DIR_OF_DB_2_BACK_UP = file.path("~", "..", "Desktop")
 NAME_DB = "Case.xlsx"
-
+NAME_DB_2_BACK_UP = "COVID-19_v2.accdb"
 
 #DIR_OF_INPUT = "//Ncr-a_irbv2s/irbv2/PHAC/IDPCB/CIRID/VIPS-SAR/EMERGENCY PREPAREDNESS AND RESPONSE HC4/EMERGENCY EVENT/WUHAN UNKNOWN PNEU - 2020/DATA AND ANALYSIS/DATABASE/R"
 #DIR_OF_OUTPUT = "//Ncr-a_irbv2s/irbv2/PHAC/IDPCB/CIRID/VIPS-SAR/EMERGENCY PREPAREDNESS AND RESPONSE HC4/EMERGENCY EVENT/WUHAN UNKNOWN PNEU - 2020/DATA AND ANALYSIS/DATABASE/R/output"
-DIR_OF_OUTPUT = "~"
+#DIR_OF_OUTPUT = "~"
 DIR_OF_INPUT = getwd()
-COLUMNS_DEFINED_FOR_REPORTS = "end_of_day_reports_input.xlsx"
-
+END_OF_DAY_REPORT_INPUT = "end_of_day_reports_input.xlsx"
 
 YES_STR = "YES"
 NO_STR = "NO"
@@ -247,23 +247,143 @@ get_flat_case_tbl <- function(con = get_covid_cases_db_con(), flatten = F){
   ret_df = get_db_tbl(con = con, tlb_nm = "case")
   if (flatten == T){
     #TODO:
-    print("warning flatten not implemented yet in get_flat_case_tbl!, this is for Dbs with ")
+    print("warning flatten not implemented yet in get_flat_case_tbl!, this is for Dbs with relational stuffs.....")
     return(NULL)
   }
   return(ret_df)
 }
-
+get_flat_case_tbl()
 
 
 #get_reports_column_list()
 get_reports_column_list <- function(in_dir = DIR_OF_INPUT, 
-                                    fn = COLUMNS_DEFINED_FOR_REPORTS){
+                                    fn = END_OF_DAY_REPORT_INPUT){
   #' Return a long table of report name and columns needed in that report, in the prefered order 
   #'
   #'
   #return(rio::import(file.path(in_dir, fn), setclass = "tibble"))
   return(readxl::read_xlsx(file.path(in_dir, fn)))
 }
+
+
+get_reports_dir_locations <- function(in_dir = DIR_OF_INPUT, 
+                                    fn = END_OF_DAY_REPORT_INPUT#, 
+                                    #report_filter
+                                    ){
+  #' Return a table of report name and directories to put the report into 
+  #'
+  #'
+  #return(rio::import(file.path(in_dir, fn), setclass = "tibble"))
+  return(readxl::read_xlsx(file.path(in_dir, fn), sheet = "report_locations"))
+}
+
+
+
+
+
+get_HCDaily_cols <- function(report_filter = "HCDaily", 
+                             ...){
+  #' Return Columns needed for the 'HCDaily' report 
+  #'
+  #'
+  get_reports_column_list(...) %>% 
+    filter(report == report_filter) %>% pull(col_nm)
+}
+get_HCDaily_dir <- function(report_filter = "HCDaily", 
+                            ...){
+  #' Return directory needed for the 'HCDaily' report 
+  #'
+  #'
+  get_reports_dir_locations(...) %>% 
+    filter(report == report_filter) %>% pull(dir)
+}
+get_export_should_write <- function(report_filter, 
+                            ...){
+
+  get_reports_dir_locations(...) %>% 
+    filter(report == report_filter) %>% 
+    pivot_longer(., colnames(.)) %>% 
+    filter(name == as.character( lubridate::wday(Sys.Date(), label = T))) %>%
+    pull(value) %>% 
+    trimws() %>% nchar() > 0
+
+}
+
+
+get_StatsCan_cols <- function(report_filter = "STATCAN", 
+                              ...){
+  #' Return Columns needed for the 'STATCAN' report 
+  #'
+  #'
+  get_reports_column_list(...) %>% 
+    filter(report == report_filter) %>% pull(col_nm)
+}
+get_StatsCan_dir <- function(report_filter = "STATCAN", 
+                            ...){
+  #' Return directory needed for the 'STATCAN' report 
+  #'
+  #'
+  get_reports_dir_locations(...) %>% 
+    filter(report == report_filter) %>% pull(dir)
+}
+
+
+
+
+
+get_WHO_cols <- function(report_filter = "WHO", 
+                         ...){
+  #' Return Columns needed for the 'WHO' report 
+  #'
+  #'
+  get_reports_column_list(...) %>% 
+    filter(report == report_filter) %>% pull(col_nm)
+}
+get_WHO_dir <- function(report_filter = "WHO", 
+                            ...){
+  #' Return directory needed for the 'WHO' report 
+  #'
+  #'
+  get_reports_dir_locations(...) %>% 
+    filter(report == report_filter) %>% pull(dir)
+}
+
+
+
+get_case_data_domestic_epi_cols <- function(report_filter = "qry_allcases", 
+                                            ...){
+  get_reports_column_list(...) %>% 
+    filter(report == report_filter) %>% pull(col_nm)
+}
+get_case_data_domestic_epi_dir <- function(report_filter = "qry_allcases", 
+                            ...){
+  #' Return directory needed for the 'qry_allcases' report 
+  #'
+  #'
+  get_reports_dir_locations(...) %>% 
+    filter(report == report_filter) %>% pull(dir)
+}
+
+
+
+get_domestic_survelance_cols <- function(report_filter = "Domestic surveillance", 
+                                         ...){
+  #' Return Columns needed for the 'Domestic surveillance' or modelng report
+  #'
+  #'
+  get_reports_column_list(...) %>% 
+    filter(report == report_filter) %>% pull(col_nm)
+}
+
+get_domestic_survelance_dir <- function(report_filter = "Domestic surveillance", 
+                                           ...){
+  #' Return directory needed for the 'Domestic surveillance' report 
+  #'
+  #'
+  get_reports_dir_locations(...) %>% 
+    filter(report == report_filter) %>% pull(dir)
+}
+
 
 
 
@@ -539,34 +659,8 @@ make_exposure_cat2 <- function(df){
 }
 
 
-get_HCDaily_cols <- function(report_filter = "HCDaily", 
-                                         ...){
-  #' Return Columns needed for the 'HCDaily' report 
-  #'
-  #'
-  get_reports_column_list(...) %>% 
-    filter(report == report_filter) %>% pull(col_nm)
-}
 
 
-
-get_StatsCan_cols <- function(report_filter = "STATCAN", 
-                             ...){
-  #' Return Columns needed for the 'STATCAN' report 
-  #'
-  #'
-  get_reports_column_list(...) %>% 
-    filter(report == report_filter) %>% pull(col_nm)
-}
-
-get_WHO_cols <- function(report_filter = "WHO", 
-                              ...){
-  #' Return Columns needed for the 'WHO' report 
-  #'
-  #'
-  get_reports_column_list(...) %>% 
-    filter(report == report_filter) %>% pull(col_nm)
-}
 
 
 get_WHO <- function(con = get_covid_cases_db_con(), 
@@ -651,14 +745,6 @@ get_HCDaily <- function(con = get_covid_cases_db_con(),
   
 }
 
-get_domestic_survelance_cols <- function(report_filter = "Domestic surveillance", 
-                                            ...){
-  #' Return Columns needed for the 'Domestic surveillance' or modelng report
-  #'
-  #'
-  get_reports_column_list(...) %>% 
-    filter(report == report_filter) %>% pull(col_nm)
-}
 
 
 get_domestic_survelance <- function(con = get_covid_cases_db_con(), 
@@ -687,12 +773,6 @@ get_domestic_survelance <- function(con = get_covid_cases_db_con(),
 }
 
 
-
-get_case_data_domestic_epi_cols <- function(report_filter = "qry_allcases", 
-                                            ...){
-  get_reports_column_list(...) %>% 
-    filter(report == report_filter) %>% pull(col_nm)
-}
 
 
 
@@ -775,13 +855,28 @@ get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(),
 }
 
 
-extract_table_report <- function(df_fun, fn, ...){
+extract_table_report <- function(df_fun, fn, report_filter, ...){
+  
+  if(!get_export_should_write(report_filter= report_filter)){
+    print(paste0("Not wrting '",report_filter,"' today."))
+    return(NULL)
+  }
+  
+  print(paste0("reporting '",report_filter,"' now....")) 
+  
   tic <- Sys.time()
   df <- df_fun(...)
   toc <- Sys.time()
   print(paste0("took ", format(toc - tic), " to get data"))
   
   tic <- Sys.time()
+  
+  target_dir <- dirname(fn)
+  if ( ! dir.exists(target_dir)){
+    dir.create(target_dir, recursive = T)
+  }
+  
+  
   writexl::write_xlsx(x = df ,#%>% head(50000),
                       path = fn,
                       col_names = TRUE,
@@ -794,51 +889,50 @@ extract_table_report <- function(df_fun, fn, ...){
 
 
 extract_case_data_domestic_epi <- function(){
-  print(paste0("Running Domestic epi (qry_allcases)"))
   extract_table_report(df_fun = get_case_data_domestic_epi, 
-                       fn = path.expand( file.path(DIR_OF_OUTPUT, 
+                       fn = path.expand( file.path(get_case_data_domestic_epi_dir(), 
                                                    paste0("qry_allcases "  , format(Sys.Date() ,"%m-%d-%Y"), ".xlsx")
-                                                   ))
+                       )),
+                       report_filter = "qry_allcases"
   )
 }
 
 
 extract_case_data_domestic_survelance <- function(){
-  print(paste0("Running Domestic Survelance (modeling)"))
   extract_table_report(df_fun = get_domestic_survelance, 
-                       fn = path.expand( file.path(DIR_OF_OUTPUT, 
+                       fn = path.expand( file.path(get_domestic_survelance_dir(), 
                                                    paste0("Domestic surveillance data - "  , format(Sys.Date() ,"%Y-%m-%d"), ".xlsx")
-                       ))
+                       )),
+                       report_filter = "Domestic surveillance"
   )
 }
 
 
 extract_case_data_get_HCDaily <- function(){
-  print(paste0("Running HC Daily"))
   extract_table_report(df_fun = get_HCDaily, 
-                       fn = path.expand( file.path(DIR_OF_OUTPUT, paste0(format(Sys.Date() ,"%Y%m%d"), "_HCDaily.xlsx")
-                       ))
+                       fn = path.expand( file.path(get_HCDaily_dir(), 
+                                                   paste0(format(Sys.Date() ,"%Y%m%d"), "_HCDaily.xlsx")
+                       )),
+                       report_filter = "HCDaily"
   )
+  
   
 }
 
 
 extract_case_data_get_StatsCan <- function(){
+  extract_table_report(df_fun = get_StatsCan, 
+                       fn = path.expand( file.path(get_StatsCan_dir(), 
+                                                   paste0("Weekly Extended Dataset_", format(Sys.Date() ,"%Y%m%d"), ".xlsx")
+                       )),
+                       report_filter = "STATCAN"
+  )
   
-  if (lubridate::wday(Sys.Date()) == 1){
-    print(paste0("Today is Sunday, writing the statscan report"))
-    extract_table_report(df_fun = get_StatsCan, 
-                         fn = path.expand( file.path(DIR_OF_OUTPUT, paste0("Weekly Extended Dataset_", format(Sys.Date() ,"%Y%m%d"), ".xlsx")
-                         ))
-    )
-    
-  }else{
-    print(paste0("Today is Not Sunday....did not write statscan report"))
-  }
+
 }
 
 
-backup_db <- function(full_fn = file.path(DIR_OF_DB, NAME_DB),
+backup_db <- function(full_fn = file.path(DIR_OF_DB_2_BACK_UP, NAME_DB_2_BACK_UP),
                       base_backup_location = file.path(dirname(full_fn), "BACKUP")
                         ){
   
