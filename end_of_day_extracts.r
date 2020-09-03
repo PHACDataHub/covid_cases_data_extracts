@@ -19,7 +19,7 @@ library(svglite)
 library(docstring)
 library(writexl)
 library(readxl)
-library(xlsx)
+#library(xlsx)
 library(lubridate)
 #library(RDCOMClient)
 
@@ -74,8 +74,10 @@ get_covid_cases_db_con <- function(
                                                  db_full_nm, 
                                                  ";PWD=", db_pwd))
   }else if (db_type == "xlsx"){
-    con <- dbConnect(odbc::odbc(),
-                     .connection_string = paste0("Driver={Microsoft Excel Driver (*.xls, *.xlsx, *.xlsm, *.xlsb)};DBQ=",db_full_nm,";ReadOnly=0;"))
+    #TODO : ODBC is having issues on Jenne compuiter so we pretend its a DB connection
+    return(db_full_nm)
+    # con <- dbConnect(odbc::odbc(),
+    #                  .connection_string = paste0("Driver={Microsoft Excel Driver (*.xls, *.xlsx, *.xlsm, *.xlsb)};DBQ=",db_full_nm,";ReadOnly=0;"))
     
   }
   else
@@ -231,7 +233,13 @@ get_db_tbl <- function(con = get_covid_cases_db_con(),
   if (is.null(get_db_tbl_IN_MEM_CACHE[[tlb_nm]])){
     print(paste0("Fetching and memmory caching '",tlb_nm,"'."))
     tic <- Sys.time()
-    get_db_tbl_IN_MEM_CACHE[[tlb_nm]]  <<-  tbl(con, tlb_nm) %>% collect() 
+    if (class(con) == "character"){
+      #TODO : ODBC is having issues on Jenne compuiter so we pretend its a DB connection
+      get_db_tbl_IN_MEM_CACHE[[tlb_nm]]  <<-  readxl::read_xlsx(path = con, sheet = stringr::str_to_title(tlb_nm) )
+    }else{
+      get_db_tbl_IN_MEM_CACHE[[tlb_nm]]  <<-  tbl(con, tlb_nm) %>% collect() 
+    }
+    
     toc <- Sys.time()
     print(paste0("It took ", format(toc-tic) ," to cache the table '",tlb_nm,"'."))
   }
@@ -250,9 +258,13 @@ get_flat_case_tbl <- function(con = get_covid_cases_db_con(), flatten = F){
     print("warning flatten not implemented yet in get_flat_case_tbl!, this is for Dbs with relational stuffs.....")
     return(NULL)
   }
+  
+  #ret_df %>% select(matches("Date", ignore.case = F)) %>% count(HospStartDate)
+  
   return(ret_df)
 }
-get_flat_case_tbl()
+get_flat_case_tbl() %>% 
+  select(c("OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1"))
 
 
 #get_reports_column_list()
@@ -488,7 +500,6 @@ make_Death <- function(df){
                           ifelse(Disposition %in%  c("Deceased", "", UNKNOWN_STR), UNKNOWN_STR, NO_STR)       
                           )) %>% pull(Death)
 }
-
 
 make_EpisodeDate <- function(df){
   #' return vector indicating the episode date
