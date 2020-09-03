@@ -258,13 +258,26 @@ get_flat_case_tbl <- function(con = get_covid_cases_db_con(), flatten = F){
     print("warning flatten not implemented yet in get_flat_case_tbl!, this is for Dbs with relational stuffs.....")
     return(NULL)
   }
-  
-  #ret_df %>% select(matches("Date", ignore.case = F)) %>% count(HospStartDate)
-  
+#   df_dts <- 
+#     bind_cols(
+#   ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
+#     select_if(is.character) %>% 
+#     mutate_all(function(x){as.Date(as.numeric(x),origin = "1899-12-30")})
+# ,
+#   lgl_dt <-   
+#   ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
+#     select_if(is.logical) %>% 
+#     mutate_all(function(x){as.Date(as.numeric(x),origin = "1899-12-30")})
+#   
+#     ) 
   return(ret_df)
 }
-get_flat_case_tbl() %>% 
-  select(c("OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1"))
+
+########################
+#chache the table
+get_flat_case_tbl()
+
+
 
 
 #get_reports_column_list()
