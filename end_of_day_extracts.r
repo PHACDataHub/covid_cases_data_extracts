@@ -26,26 +26,32 @@ library(lubridate)
 
 
 
-DIR_OF_DB = file.path("~", "..", "Desktop") 
+#DIR_OF_DB = file.path("~", "..", "Desktop") 
+#NAME_DB = "COVID-19_v2.accdb"
+DIR_OF_DB = "~"
+NAME_DB = "Case.xlsx"
+
 
 #DIR_OF_INPUT = "//Ncr-a_irbv2s/irbv2/PHAC/IDPCB/CIRID/VIPS-SAR/EMERGENCY PREPAREDNESS AND RESPONSE HC4/EMERGENCY EVENT/WUHAN UNKNOWN PNEU - 2020/DATA AND ANALYSIS/DATABASE/R"
-DIR_OF_INPUT = getwd()
 #DIR_OF_OUTPUT = "//Ncr-a_irbv2s/irbv2/PHAC/IDPCB/CIRID/VIPS-SAR/EMERGENCY PREPAREDNESS AND RESPONSE HC4/EMERGENCY EVENT/WUHAN UNKNOWN PNEU - 2020/DATA AND ANALYSIS/DATABASE/R/output"
 DIR_OF_OUTPUT = "~"
+DIR_OF_INPUT = getwd()
+COLUMNS_DEFINED_FOR_REPORTS = "end_of_day_reports_input.xlsx"
 
 
-
-NAME_DB = "COVID-19_v2.accdb"
-COLUMNS_DEFINED_FOR_REPORTS = "end_of_day_reports_input_b.xlsx"
 YES_STR = "YES"
 NO_STR = "NO"
 UNKNOWN_STR = "UNKNOWN"
 NOT_STATED_STR = "Not stated"
+#DEF_TYPE_DB = "MS_Access"
+DEF_TYPE_DB = "xlsx"
+
+
 
 ####################################
 #
 get_covid_cases_db_con <- function(
-  db_type = "MS_Access", 
+  db_type = DEF_TYPE_DB, 
   db_dir = DIR_OF_DB,
   db_name = NAME_DB,
   db_full_nm = path.expand(file.path(db_dir, db_name)),
@@ -67,7 +73,12 @@ get_covid_cases_db_con <- function(
                      .connection_string = paste0("Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=", 
                                                  db_full_nm, 
                                                  ";PWD=", db_pwd))
-  }else
+  }else if (db_type == "xlsx"){
+    con <- dbConnect(odbc::odbc(),
+                     .connection_string = paste0("Driver={Microsoft Excel Driver (*.xls, *.xlsx, *.xlsm, *.xlsb)};DBQ=",db_full_nm,";ReadOnly=0;"))
+    
+  }
+  else
   {
     warning(paste0("Unknown db_type='", db_type, "'. Returning NULL from get_covid_cases_db_con"))
   }
@@ -76,7 +87,6 @@ get_covid_cases_db_con <- function(
 
 
 get_covid_cases_db_con()
-
 
 
 ########################################
@@ -210,6 +220,8 @@ insert_str <- function(x, insert_str = "-", afterPos){
 }
 
 
+
+
 get_db_tbl_IN_MEM_CACHE <- list()
 get_db_tbl <- function(con = get_covid_cases_db_con(),
                        tlb_nm = "case"){
@@ -217,7 +229,11 @@ get_db_tbl <- function(con = get_covid_cases_db_con(),
   #' this will have a memmory cache to avoid multiple feteches 
   #'
   if (is.null(get_db_tbl_IN_MEM_CACHE[[tlb_nm]])){
+    print(paste0("Fetching and memmory caching '",tlb_nm,"'."))
+    tic <- Sys.time()
     get_db_tbl_IN_MEM_CACHE[[tlb_nm]]  <<-  tbl(con, tlb_nm) %>% collect() 
+    toc <- Sys.time()
+    print(paste0("It took ", format(toc-tic) ," to cache the table '",tlb_nm,"'."))
   }
   return(get_db_tbl_IN_MEM_CACHE[[tlb_nm]])
 }
@@ -488,6 +504,25 @@ make_RecoveryDate2 <- function(df){
 }
 
 
+make_ExposureCountry <- function(df, sym_col_nm_patern = "^(TravelFromCountry|TravelToCountry)\\d", colapse_str = " ", don_t_care_country = c("Canada", "")){
+  #' return vector indicating the exposure countries
+  #'
+  #' @param df must have all of the following columns "exposure_cat"
+  #'
+  
+  df %>% select(PHACID, matches(sym_col_nm_patern)) %>%
+    pivot_longer(matches(sym_col_nm_patern), values_drop_na = T) %>% 
+    mutate(value = clean_str(value)) %>% 
+    filter(! value %in% don_t_care_country) %>% 
+    distinct(PHACID, value) %>% 
+    group_by(PHACID) %>% 
+    summarise(ExposureCountry = paste0(value, collapse = colapse_str)) %>% 
+    left_join(df, ., by = "PHACID") %>% 
+    replace_na(list(ExposureCountry = "")) %>% 
+    pull(ExposureCountry)
+}
+
+
 make_exposure_cat2 <- function(df){
   #' return vector indicating the exposure_cat2
   #'
@@ -628,7 +663,7 @@ get_domestic_survelance_cols <- function(report_filter = "Domestic surveillance"
 
 get_domestic_survelance <- function(con = get_covid_cases_db_con(), 
                                     df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Probable", "Confirmed")),
-                                    countries_tbl = get_db_tbl(con = con, tlb_nm = "Travel_Countries") %>% select(PHACID, ExposureCountry),
+                                    #countries_tbl = get_db_tbl(con = con, tlb_nm = "Travel_Countries") %>% select(PHACID, ExposureCountry),
                                     cols = get_domestic_survelance_cols()){
   #' reuturns Data frame for the Domestic survelance report
   #'
@@ -664,7 +699,7 @@ get_case_data_domestic_epi_cols <- function(report_filter = "qry_allcases",
 
 get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(), 
                                        df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Probable", "Confirmed")),
-                                       countries_tbl = get_db_tbl(con = con, tlb_nm = "Travel_Countries") %>% select(PHACID, ExposureCountry) ,
+                                       #countries_tbl = get_db_tbl(con = con, tlb_nm = "Travel_Countries") %>% select(PHACID, ExposureCountry) ,
                                        cols = get_case_data_domestic_epi_cols()
                                        
 ){
@@ -716,12 +751,15 @@ get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(),
   
   
   df <- df %>% mutate(Indigenous2 = ifelse(Indigenous == YES_STR | IndigenousGroup_BOOL == TRUE, YES_STR, Indigenous ))  #%>% #count(IndigenousGroup, Indigenous , Indigenous2, sort = T) %>% view()
+# 
+#   df <- 
+#   countries_tbl %>% 
+#     mutate(ExposureCountry = stringr::str_to_upper(stringr::str_trim(ExposureCountry))) %>% #count(ExposureCountry, sort = T) %>% view()
+#     left_join(df, ., by = "PHACID")
 
-  df <- 
-  countries_tbl %>% 
-    mutate(ExposureCountry = stringr::str_to_upper(stringr::str_trim(ExposureCountry))) %>% #count(ExposureCountry, sort = T) %>% view()
-    left_join(df, ., by = "PHACID")
-
+  df <- df %>% mutate(., ExposureCountry = make_ExposureCountry(.))
+  
+  
   df <- 
     df %>% 
     rename(agegroup10 := AgeGroup10, 
