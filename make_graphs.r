@@ -1,10 +1,12 @@
 
-
+library(binom)
 library(tidyverse)
 library(ggplot2)
 library(lubridate)
 library(zoo)
 library(stringr)
+library(ggrepel)
+
 theme_set(theme_bw())
 
 get_lbl <- function(str, lang = "en"){
@@ -24,7 +26,7 @@ get_lbl <- function(str, lang = "en"){
 
 ####################################
 #
-get_db_counts <- function(con = get_db_con(), 
+get_db_counts <- function(con = get_covid_cases_db_con(), 
                           a_tbl = get_flat_case_tbl(con = con),
                           colnm = "Asymptomatic", 
                           agegrp = "AgeGroup20" ){
@@ -188,3 +190,217 @@ extract_epi_curves <- function(report_filter= "epi_curves",
   
 }
 
+
+
+
+####################################
+#
+clean_up <- function(v){
+  #' Cleans up some mess in the string vector 
+  v %>% str_to_lower() %>% 
+    trimws() %>% 
+    replace(., is.na(.), "") %>%
+    replace(., . == "unknown", "") %>%
+    replace(., . == "unk", "") %>% 
+    replace(., . == "not asked", "")
+}
+
+
+####################################
+#
+get_pt_is_recorded <- function(case_cnts, min_fraction = 0.9, min_sample = 100, include_canada = TRUE){
+  #'
+  #' Does the PT meat some thrshold of having reported this variable.
+  #'
+  #'
+  tmp <-
+    case_cnts %>%
+    group_by(pt, is_recorded) %>% 
+    summarise(nn = sum(n)) %>% 
+    pivot_wider(names_from = is_recorded , values_from = nn, names_prefix = "is_recorded_", values_fill = 0) %>%
+    mutate(total_counts = is_recorded_FALSE + is_recorded_TRUE) %>% 
+    mutate(is_recorded_fraction = is_recorded_TRUE/ total_counts) %>%
+    mutate(sample_size = total_counts *is_recorded_fraction) %>%
+    arrange(desc(is_recorded_fraction)) %>% 
+    #  mutate(lbl = paste(pt, "recoreded ", label_percent()(is_recorded_fraction)))
+    # filter((is_recorded_fraction >= min_fraction & sample_size > min_sample) | pt == "CANADA") %>%
+    select(pt, is_recorded_fraction, sample_size) %>% 
+    ungroup()
+  
+  if (include_canada){
+    tmp <- tmp %>% filter((is_recorded_fraction >= min_fraction & sample_size > min_sample) | pt == "CANADA")
+  }else{
+    tmp <- tmp %>% filter(is_recorded_fraction >= min_fraction & sample_size > min_sample)
+  }
+  return(tmp)
+}
+
+
+
+get_df_2_plot <- function(
+  COL_NM,
+  COL_Desc = get_lbl(COL_NM),
+  #Ouput_file_nm =  paste0("fraction_", COL_Desc,"_by_age_and_prov_",Sys.Date(),".svg"), 
+  min_fraction = 0.9, 
+  min_sample = 100, 
+  include_canada = TRUE, 
+  agegrp = "AgeGroup10",
+  alpha = 0.05,
+  con = get_covid_cases_db_con(),
+  case_cnts = get_db_counts(con = con, colnm = COL_NM, agegrp = agegrp)
+){
+  #'
+  #' Returns DF with information about the rate that given column is "positive", by province and age group
+  #'
+  #'
+
+  
+    # Clean the data
+  case_cnts <- 
+    case_cnts %>% 
+    mutate(nm = clean_up(nm)) %>% 
+    mutate(nm = clean_str(nm)) %>%
+    mutate(is_recorded = nm != "")
+    
+  
+  
+  
+  
+  
+  # When it is recored, what value occures most offen
+  positive_case <-
+    case_cnts %>%
+    filter(is_recorded == TRUE) %>% 
+    group_by(nm) %>% 
+    summarise(nn = sum(n)) %>% 
+    arrange(desc(nn)) %>% slice(1) %>% pull(nm)
+  
+  
+  # In spite of all this "Yes" is still always considered "Positive"
+  if (
+    case_cnts %>%
+    filter(is_recorded == TRUE) %>% 
+    filter(nm == YES_STR) %>% nrow() >= 1
+  ){
+    positive_case <- YES_STR
+  }
+  
+  
+  
+  cases_total <- 
+    case_cnts %>% 
+    filter(is_recorded == TRUE) %>%
+    #filter(pt %in% kept_records$pt) %>% 
+    mutate(nm = if_else(nm == positive_case, YES_STR, NO_STR)) %>% 
+    group_by(nm,  age_group, is_recorded) %>% 
+    summarise(n = sum(n)) %>% 
+    mutate(pt = "CANADA") %>% 
+    ungroup() %>% 
+    bind_rows(case_cnts)
+  
+  
+  # which provinces kept records
+  kept_records <- 
+    cases_total %>% 
+    get_pt_is_recorded(min_fraction = min_fraction, min_sample = min_sample, include_canada = include_canada)
+  
+  
+  
+  
+  
+  ##############################
+  # Overall rate
+  pt_fraction <- 
+    cases_total %>%
+    filter(is_recorded == TRUE) %>%
+    group_by(pt, nm) %>% 
+    summarise(nn = sum(n)) %>%
+    ungroup() %>% 
+    pivot_wider(names_from = nm, values_from = nn, names_prefix = "nm_", values_fill = 0) %>% 
+    mutate(nm_frac_yes = nm_Yes / (nm_Yes + nm_No)) %>% 
+    select(pt, nm_frac_yes)
+  
+  
+  lbls <- 
+    kept_records %>% 
+    left_join(pt_fraction, by = "pt") %>% 
+    mutate(lbl = paste(pt, 
+                       " recorded=", label_percent()(is_recorded_fraction), 
+                       "\n",COL_Desc,"=", label_percent()(nm_frac_yes), 
+                       "\nN=", label_number(big.mark = ",")(sample_size), 
+                       sep = "" )
+    ) %>% 
+    select(pt, lbl)
+  
+  
+  
+  
+
+  #binom.confint(sum(vehicleType=="suv"), length(vehicleType))
+  #binom.confint(sum(vehicleType=="suv"), length(vehicleType), methods="exact")
+  #pp <-
+  tmp <- 
+    cases_total %>%  #count(age_group)
+    filter(is_recorded == TRUE) %>%
+    filter(!is.na(age_group)) %>%
+    filter(age_group != "Unknown") %>%
+    group_by(age_group, nm,pt) %>%
+    summarise(nn = sum(n)) %>%
+    pivot_wider(names_from = nm, values_from = nn, names_prefix = "nm_", values_fill = 0) %>% 
+    mutate(nm_total = (nm_Yes + nm_No)) %>%# filter(pt == "CANADA")
+    mutate(nm_frac_yes2 = binom.confint(nm_Yes, nm_total, conf.level = 1 - alpha,  methods="exact") )  %>% 
+    mutate(nm_frac_yes = nm_Yes / (nm_total)) %>%# filter(pt == "CANADA")
+    inner_join(lbls, by = "pt") %>% #filter(pt == "CANADA")
+    mutate(nm_per_yes = paste0(percent(nm_frac_yes, accuracy = 1), "\nN=", nm_total )) #%>% filter(pt == "CANADA")  
+  
+  tmp$nm_frac_yes2 %>% 
+    unchop() %>% 
+    rename_all(paste, "CI", sep = "_") %>% 
+    bind_cols(tmp, . ) %>% 
+    mutate(nm_per_yes = paste0(
+      #percent(nm_frac_yes, accuracy = 1), 
+      " (", 
+      percent(lower_CI, accuracy = 1), "-", 
+      percent(upper_CI, accuracy = 1), 
+      ")"
+      #, "\nN=", nm_total 
+    )
+    ) #%>% filter(pt == "CANADA")  
+  
+}
+
+
+plot_positives_by_prov <- function(){
+
+  df <- get_df_2_plot(COL_NM = COL_NM,
+                #Ouput_file_nm  = Ouput_file_nm,
+                min_fraction = 0.1,
+                include_canada = T )
+  
+  
+  pp <- 
+    df %>%
+    ggplot(  aes(x = age_group, y = nm_frac_yes, fill = pt, color = pt) ) + 
+    geom_point(aes(size = n_CI)) + 
+    geom_line(aes(group = pt))+
+    geom_errorbar(aes(ymin=lower_CI, ymax=upper_CI), width = 0.2) +
+    geom_ribbon(aes(ymin=lower_CI, 
+                    ymax=upper_CI, 
+                    x = as.numeric(age_group)), 
+                alpha = 0.5) +
+    #geom_col(color = "black", alpha = 0.5) +
+    geom_label(mapping = aes(label = nm_per_yes, color = pt), fill = "white", alpha = 0.5, nudge_x = 0.25, nudge_y = 0.1)+
+    
+    #geom_smooth() + 
+    scale_y_continuous() +
+    facet_wrap(vars(lbl)) +
+    labs(y = paste0("Fraction ",COL_Desc), 
+         title = paste0("Fraction ",COL_Desc," by age and province"), 
+         subtitle = "when substantial fraction of cases reported the relevent information.",
+         caption = Sys.Date()) +
+    guides(fill = F, size = F)
+  
+  
+  
+  pp
+}

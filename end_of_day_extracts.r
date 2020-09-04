@@ -47,7 +47,7 @@ BLANK_VALUE_STR = ""
 NOT_STATED_STR = "Not stated"
 #DEF_TYPE_DB = "MS_Access"
 DEF_TYPE_DB = "xlsx"
-
+OUTPUT_DATE_FORMAT = "%Y-%m-%d"
 
 
 ####################################
@@ -884,7 +884,8 @@ make_final_clean_df <- function(df,
   df[!colnames(df) %in% colnames(df_cleaned)] %>%
     bind_cols(., df_cleaned) %>%
     select(cols) %>% 
-    mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) 
+    mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) %>%
+    mutate_if(is.Date, format, OUTPUT_DATE_FORMAT)
   
   
   
@@ -929,11 +930,14 @@ get_StatsCan <- function(con = get_covid_cases_db_con(),
     ) %>% 
     rename(Agegroup10 := AgeGroup10  ,age := Age)
   
-  df2 %>%   
+  df3<- 
+    df2 %>%   
     make_Asymptomatic_all() %>% 
     select(PHACID, Asymptomatic2) %>% 
     left_join(df2, ., by = "PHACID") %>%   
     make_final_clean_df(report_filter = "STATCAN", cols = cols)
+  
+  return(df3)
     # select(cols)%>% 
     # mutate_if(.predicate = is.character, clean_str) %>% 
     # mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) %>% 
@@ -1328,6 +1332,19 @@ get_db_error_report_by_case_teasting_CloseContact_disagree<- function(con = get_
     mutate(typ = "Contact Testing Reason" )
 }
 
+get_db_error_report_by_case_COVIDDeath_Disposition_disagree<- function(con = get_db_con(), a_tbl = get_flat_case_tbl(con = con) ){
+  #' Generates Error List on DB
+  a_tbl %>% 
+    select(PHACID, COVIDDeath, Disposition) %>% 
+    mutate(COVIDDeath = clean_str(COVIDDeath), 
+           Disposition = clean_str(Disposition)) %>%
+    filter(COVIDDeath == YES_STR & Disposition != "Deceased") %>% 
+    mutate(err = paste0("COVIDDeath '",COVIDDeath,"' disagrees with  Disposition '",Disposition,"'") ) %>% 
+    select(PHACID, err)  %>% collect() %>% 
+    mutate(typ = "Covid Death but not Deceased" )
+}
+
+
 
 
 ###########################################
@@ -1351,7 +1368,8 @@ get_db_error_report_by_case <- function(con = get_db_con(), a_tbl = get_flat_cas
       get_db_error_report_by_case_dead_before_onset(a_tbl = a_tbl),
       get_db_error_report_by_case_recovered_before_onset(a_tbl = a_tbl),
       get_db_error_report_by_case_travel(a_tbl = a_tbl),
-      get_db_error_report_by_case_teasting_CloseContact_disagree(a_tbl = a_tbl)
+      get_db_error_report_by_case_teasting_CloseContact_disagree(a_tbl = a_tbl),
+      get_db_error_report_by_case_COVIDDeath_Disposition_disagree(a_tbl = a_tbl)
       ) %>% arrange(PHACID)
   
   ids <- unique(errs$PHACID)
