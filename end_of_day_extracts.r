@@ -23,7 +23,7 @@ library(readxl)
 library(lubridate)
 #library(RDCOMClient)
 
-
+source("make_graphs.r")
 
 
 #DIR_OF_DB = file.path("~", "..", "Desktop") 
@@ -42,6 +42,8 @@ END_OF_DAY_REPORT_INPUT = "end_of_day_reports_input.xlsx"
 YES_STR = "YES"
 NO_STR = "NO"
 UNKNOWN_STR = "UNKNOWN"
+#BLANK_VALUE_STR = "BLANK"
+BLANK_VALUE_STR = ""
 NOT_STATED_STR = "Not stated"
 #DEF_TYPE_DB = "MS_Access"
 DEF_TYPE_DB = "xlsx"
@@ -96,7 +98,7 @@ get_covid_cases_db_con()
 #
 non_missing_cols <- function(df, cols_order, 
                              vector_init_mode = "double",
-                             vector_transform = as_datetime,
+                             vector_transform = as_date,
                              bad_value = 0)
 {
   #' For each row in the datafram return a value from a hieraghy of columns 
@@ -166,26 +168,75 @@ non_missing_cols_str <- function(df, cols_order, strs_for_col,
 
 ########################################
 #
-clean_yes_no <- function(x, error_replace = UNKNOWN_STR, bad_value = "", good_vals = c(YES_STR,NO_STR)){
+clean_yes_no <- function(x, 
+                         other_replace = UNKNOWN_STR, 
+                         bad_value_replace = BLANK_VALUE_STR,
+                         bad_value = "", 
+                         good_vals = c(YES_STR,NO_STR)){
   #' makes sure all values in a vector are one of a list of values
   #' 
   #' @param x a vector
   #' @param error_replace a vector
   #' @param x a vector
-  x[is.na(x)] <- toupper(error_replace)
-  x[x == bad_value] <- toupper(error_replace)
+  clean_Categorical(x = x, 
+                    other_replace = other_replace,
+                    bad_value_replace = bad_value_replace,
+                    bad_value = bad_value,
+                    good_vals = good_vals)
   
-  x <- toupper(x)
+}
+
+
+clean_Categorical_top_n <-function(x, n = 1){
+  #' makes sure all values in a vector are one of a list of values
+  #' 
+  #' @param x a vector
+  #' @param n number of options to keep
+  #' @param ... passed to clean_Categorical
+  x <- clean_str(x)
+  t <- x %>% table() %>% sort(decreasing = T)
+  t <- t[1:n]
   
-  x[!(x %in% toupper(good_vals))] <- toupper(error_replace)
+  clean_Categorical(x, good_vals = names(t)) #%>% table() %>% sort(decreasing = T)
+}
+
+########################################
+#
+clean_Categorical <- function(x, 
+                         other_replace = UNKNOWN_STR, 
+                         bad_value_replace = BLANK_VALUE_STR,
+                         bad_value = "", 
+                         good_vals){
+  #' makes sure all values in a vector are one of a list of values
+  #' 
+  #' @param x a vector
+  #' @param error_replace a vector
+  #' @param x a vector
+  x <- clean_str(x)
+  good_vals <- clean_str(good_vals)
+  bad_value <- clean_str(bad_value)
+  bad_value_replace <- clean_str(bad_value_replace)
+  other_replace <- clean_str(other_replace)
+  
+  x[is.na(x)] <- bad_value_replace
+  x[x == bad_value] <- bad_value_replace
+  
+  #x <- toupper(x)
+  
+  x[!(x %in% c(good_vals, bad_value_replace))] <- other_replace
   
   return(x)
 }
 
 
+
 ########################################
 # 
-clean_str <- function(x, pattern = "[[:punct:]]", replacement = " ", NA_replace = "", capitalize_function = str_to_title){
+clean_str <- function(x, 
+                      pattern = "[[:punct:]]", 
+                      replacement = " ", 
+                      NA_replace = "", 
+                      capitalize_function = str_to_title){
   #' By default this replactes all punctuation, and trims spaces so there is only one
   #' then sets title case
   #' 
@@ -196,6 +247,16 @@ clean_str <- function(x, pattern = "[[:punct:]]", replacement = " ", NA_replace 
     capitalize_function() %>% 
     trimws() #%>% table()
 }
+
+
+clean_st_CONSTANTS <- function(){
+  YES_STR <<- clean_str(YES_STR)
+  NO_STR<<- clean_str(NO_STR)
+  UNKNOWN_STR<<- clean_str(UNKNOWN_STR)
+  BLANK_VALUE_STR<<- clean_str(BLANK_VALUE_STR) 
+  NOT_STATED_STR<<- clean_str(NOT_STATED_STR)
+}
+clean_st_CONSTANTS()
 
 
 
@@ -310,6 +371,34 @@ get_reports_dir_locations <- function(in_dir = DIR_OF_INPUT,
 }
 
 
+get_reports_lbls <- function(in_dir = DIR_OF_INPUT, 
+                                      fn = END_OF_DAY_REPORT_INPUT#, 
+                                      #report_filter
+){
+  #' Return a table of report name and labels
+  #'
+  #'
+  #return(rio::import(file.path(in_dir, fn), setclass = "tibble"))
+  return(readxl::read_xlsx(file.path(in_dir, fn), sheet = "lbls"))
+}
+
+
+get_cols_2_clean <- function(in_dir = DIR_OF_INPUT, 
+                             fn = END_OF_DAY_REPORT_INPUT, 
+                             report_filter
+){
+  #' Return a table of report name and directories to put the report into 
+  #'
+  #'
+  #return(rio::import(file.path(in_dir, fn), setclass = "tibble"))
+  readxl::read_xlsx(file.path(in_dir, fn), sheet = "input") %>% 
+    filter(report == report_filter) %>% 
+    mutate(clean_str = clean_yes_no(clean_str)) %>% 
+    filter(clean_str == YES_STR) %>%
+    pull(col_nm)
+}
+
+
 
 
 
@@ -419,10 +508,15 @@ get_domestic_survelance_dir <- function(report_filter = "Domestic surveillance",
   #' Return directory needed for the 'Domestic surveillance' report 
   #'
   #'
+  get_generic_report_dir(report_filter = report_filter, ...)
+}
+get_generic_report_dir <- function(report_filter, ...){
+  #' Return directory needed for the any report
+  #'
+  #'  
   get_reports_dir_locations(...) %>% 
     filter(report == report_filter) %>% pull(dir)
 }
-
 
 
 
@@ -478,11 +572,66 @@ make_IntensiveCareUnit <- function(df){
                                  ifelse(ICU == NO_STR , NO_STR, UNKNOWN_STR))) %>% pull(IntensiveCareUnit)
 }
 
+make_IndigenousGroup_BOOL <- function(df){
+  #' return vector indicating if they are indigenous
+  #'
+  #' @param df must have all of the following columns,IndigenousGroup
+  #'
+  #'
+  df$IndigenousGroup %>% #table()
+    gsub(pattern = "[^[:alnum:]]", replacement = " ", x = .) %>% 
+    gsub(pattern = "[ ]+", replacement = " ", x = .) %>% 
+    grepl(pattern = "First Nation|Inuit|Metis",x = ., ignore.case = T) 
+}
+
+make_Indigenous2 <- function(df){
+  #' return vector indicating if they are indigenous
+  #'
+  #' @param df must have all of the following columns,IndigenousGroup, Indigenous
+  #'
+  #'  
+  df %>% mutate(., IndigenousGroup_BOOL = make_IndigenousGroup_BOOL(.)) %>% 
+    select(IndigenousGroup_BOOL, Indigenous) %>% 
+    mutate(Indigenous = clean_str(Indigenous)) %>% 
+    mutate(Indigenous2 = ifelse(Indigenous == YES_STR | 
+                                 IndigenousGroup_BOOL == TRUE, 
+                                 YES_STR, 
+                                 Indigenous )) %>% pull(Indigenous2)
+}
+
+
+
+make_Comorbidity_all <- function(df, sym_col_nm_patern = "^RF.*(?<!Spec)$"){
+  #' return df indicating  many comorbitity flags
+  #'
+  #' @param df must have all of the following columns,PHACID, Asymptomatic, and some columns that match ,sym_col_nm_patern
+  #'
+  #'
+  #'
+  df %>% select(PHACID, matches(sym_col_nm_patern, perl = T)) %>%
+  mutate_at(vars(matches(sym_col_nm_patern, perl = T)), clean_yes_no ) %>% 
+  pivot_longer(matches(sym_col_nm_patern, perl = T)) %>% #count(value, sort = T) %>% view()
+  mutate(value_y = (value == YES_STR)*1.0, 
+         value_n = (value == NO_STR)*1.0) %>% 
+  group_by(PHACID) %>% summarise(ComorbidityYes = ifelse(sum(value_y) >= 1, YES_STR, ""),
+                                 ComorbidityNo = ifelse(sum(value_n) >= n(), NO_STR, ""),
+                                 CountRF = sum(value_y)
+  ) %>% 
+  mutate(Comorbidity = if_else(ComorbidityYes == YES_STR, 
+                               YES_STR, 
+                               if_else(ComorbidityNo == NO_STR, 
+                                       NO_STR, 
+                                       UNKNOWN_STR 
+                                       ) 
+                               )
+         )
+}
+
 
 make_Asymptomatic_all <- function(df, sym_col_nm_patern = "^sym.*(?<!Spec)$"){
   #' return df indicating  many asymptomatic flags
   #'
-  #' @param df must have all of the following columns,"ICU", "MechanicalVent",  "ICUStartDate", "VentStartDate"
+  #' @param df must have all of the following columns,PHACID, Asymptomatic, and some columns that match ,sym_col_nm_patern
   #'
   #'
   #'
@@ -513,6 +662,19 @@ make_Asymptomatic_all <- function(df, sym_col_nm_patern = "^sym.*(?<!Spec)$"){
   return(df3)
   
 }
+make_Asymptomatic_2 <-function(df){
+  #' return vector indicating if they are Asymptomatic
+  #'
+  #' @param df must have all of the columns required by make_Asymptomatic_all
+  #'
+df %>%   
+  make_Asymptomatic_all() %>% 
+  select(PHACID, Asymptomatic2) %>% 
+  left_join(df %>% select(PHACID), . , by = "PHACID") %>% 
+  pull(Asymptomatic2)
+}
+
+
 
 
 make_Death <- function(df){
@@ -525,7 +687,8 @@ make_Death <- function(df){
     mutate_at(vars(any_of(c("Disposition"))), clean_str ) %>% #count(COVIDDeath, Disposition, sort = T)
     mutate(Death = ifelse(COVIDDeath == YES_STR, YES_STR, 
                           ifelse(Disposition %in%  c("Deceased", "", UNKNOWN_STR), UNKNOWN_STR, NO_STR)       
-                          )) %>% pull(Death)
+                          )) %>% 
+    pull(Death)
 }
 
 make_EpisodeDate <- function(df){
@@ -533,8 +696,10 @@ make_EpisodeDate <- function(df){
   #'
   #' @param df must have all of the following columns, "OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1"
   #'
-  df %>% select(c("OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1")) %>% 
-    non_missing_cols(cols_order = c("OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1"))
+  cols_order = c("OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1")
+  
+  df %>% select(cols_order) %>% 
+    non_missing_cols(cols_order = cols_order)
 }
 
 make_EpisodeType <- function(df){
@@ -555,8 +720,8 @@ make_Gender_2 <- function(df){
   #' @param df must have all of the following columns "OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1"
   #'  
   df %>% 
-    select(c("Gender"))  %>% 
-    mutate(Gender2 = clean_yes_no(Gender, good_vals = c("Female", "Male", "Other"), error_replace = NOT_STATED_STR) ) %>% #count(Gender)
+    select(Gender)  %>% 
+    mutate(Gender2 = clean_Categorical(Gender, good_vals = c("Female", "Male", "Other"), bad_value_replace = NOT_STATED_STR) ) %>% #count(Gender2)
     #clean_str() %>% 
     pull(Gender2)
 }
@@ -585,7 +750,9 @@ make_healthcare_worker_2 <- function(df){
   #'  
   df %>% 
     select(Healthcare_worker)  %>% 
-    mutate(Healthcare_worker2 = clean_yes_no(Healthcare_worker, good_vals = c(YES_STR, NO_STR, UNKNOWN_STR), error_replace = NOT_STATED_STR )) %>% #count(Healthcare_worker, Healthcare_worker2, sort = T)
+    mutate(Healthcare_worker2 = clean_Categorical(Healthcare_worker, 
+                                             good_vals = c(YES_STR, NO_STR, UNKNOWN_STR), 
+                                             bad_value_replace = NOT_STATED_STR )) %>% #count(Healthcare_worker, Healthcare_worker2, sort = T)
     pull(Healthcare_worker2)
 }
 
@@ -600,7 +767,9 @@ make_LTC_Resident_2 <- function(df){
   #'  
   df %>% 
     select(LTC_resident)  %>% 
-    mutate(LTC_resident2 = clean_yes_no(LTC_resident, good_vals = c(YES_STR, NO_STR, UNKNOWN_STR), error_replace = NOT_STATED_STR )) %>% #count(LTC_resident2, LTC_resident, sort = T)
+    mutate(LTC_resident2 = clean_Categorical(LTC_resident, 
+                                             good_vals = c(YES_STR, NO_STR, UNKNOWN_STR), 
+                                             bad_value_replace = NOT_STATED_STR )) %>% #count(LTC_resident2, LTC_resident, sort = T)
     pull(LTC_resident2)
 }
 
@@ -698,12 +867,35 @@ make_exposure_cat2 <- function(df){
 
 
 
+make_final_clean_df <- function(df, 
+                                report_filter, 
+                                cols,
+                                cols_2_clean = get_cols_2_clean(report_filter = report_filter)
+){
+  #' Cleans a DF before returning it
+  
+  
+  df_cleaned <- 
+    df %>% 
+    select_if(.predicate = is.character) %>% 
+    select(any_of(cols_2_clean)) %>% 
+    mutate_all(clean_str)
+  
+  df[!colnames(df) %in% colnames(df_cleaned)] %>%
+    bind_cols(., df_cleaned) %>%
+    select(cols) %>% 
+    mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) 
+  
+  
+  
+}
+
 
 
 
 get_WHO <- function(con = get_covid_cases_db_con(), 
-                         df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed")),
-                         cols = get_StatsCan_cols()){
+                         df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed", "Probable")),
+                         cols = get_whp_cols()){
   
   
   
@@ -718,6 +910,7 @@ get_StatsCan <- function(con = get_covid_cases_db_con(),
   #'
   #'
 
+  
   df2 <- 
     df %>% 
     mutate(., EpisodeDate = make_EpisodeDate(.),
@@ -739,16 +932,17 @@ get_StatsCan <- function(con = get_covid_cases_db_con(),
   df2 %>%   
     make_Asymptomatic_all() %>% 
     select(PHACID, Asymptomatic2) %>% 
-    left_join(df2, ., by = "PHACID") %>%     
-    select(cols)%>% 
-    mutate_if(.predicate = is.character, clean_str) %>% 
-    mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) %>% 
-    mutate (PHACID = number_2_phacid(PHACID))
+    left_join(df2, ., by = "PHACID") %>%   
+    make_final_clean_df(report_filter = "STATCAN", cols = cols)
+    # select(cols)%>% 
+    # mutate_if(.predicate = is.character, clean_str) %>% 
+    # mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) %>% 
+    # mutate (PHACID = number_2_phacid(PHACID))
 }
 
 
 get_HCDaily <- function(con = get_covid_cases_db_con(), 
-                                    df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Probable", "Confirmed")),
+                                    df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed")),
                                     cols = get_HCDaily_cols()){
   #' reuturns Data frame for the HCDaily report
   #'
@@ -772,12 +966,14 @@ get_HCDaily <- function(con = get_covid_cases_db_con(),
     
     
   df2 %>%   
-    make_Asymptomatic_all() %>% 
-    select(PHACID, Asymptomatic2) %>% 
-    left_join(df2, . , by = "PHACID") %>% 
-    select(cols)%>% 
-    mutate_if(.predicate = is.character, clean_str) %>% 
-    mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) #%>% 
+    mutate(., Asymptomatic2 = make_Asymptomatic_2(.)) %>% 
+    make_final_clean_df(report_filter = "HCDaily", cols = cols)
+    # make_Asymptomatic_all() %>% 
+    # select(PHACID, Asymptomatic2) %>% 
+    # left_join(df2, . , by = "PHACID") %>% 
+    # select(cols)%>% 
+    # mutate_if(.predicate = is.character, clean_str) %>% 
+    # mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) #%>% 
     #mutate (PHACID = number_2_phacid(PHACID))
       
   
@@ -801,13 +997,15 @@ get_domestic_survelance <- function(con = get_covid_cases_db_con(),
   
   
   df2 %>%   
-    make_Asymptomatic_all() %>% 
-    select(PHACID, Asymptomatic2) %>% 
-    left_join(df2,., by = "PHACID") %>% 
-    select(cols) %>% 
-    mutate_if(.predicate = is.character, clean_str) %>% 
-    mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) %>% 
-    mutate (PHACID = number_2_phacid(PHACID))
+    mutate(., Asymptomatic2 = make_Asymptomatic_2(.)) %>% 
+    make_final_clean_df(report_filter = "Domestic surveillance", cols = cols)
+    # make_Asymptomatic_all() %>% 
+    # select(PHACID, Asymptomatic2) %>% 
+    # left_join(df2,., by = "PHACID") %>% 
+    # select(cols) %>% 
+    # mutate_if(.predicate = is.character, clean_str) %>% 
+    # mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) %>% 
+    # mutate (PHACID = number_2_phacid(PHACID))
 }
 
 
@@ -831,45 +1029,61 @@ get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(),
     mutate_at(vars(matches("^sym.*(?<!Spec)$", perl = T)), clean_yes_no ) %>% 
     mutate_at(vars(matches("^Dx.*(?<!Spec)$", perl = T)), clean_yes_no )
   
-  
-  df$EpisodeDate <- df %>%  make_EpisodeDate()
-  df$EpisodeType <- df %>% make_EpisodeType()
-  
+  # 
+  # df$EpisodeDate <- df %>%  make_EpisodeDate()
+  # df$EpisodeType <- df %>% make_EpisodeType()
+  # 
 
+  # df %>% mutate_at(vars(matches("^RF.*(?<!Spec)$", perl = T)), clean_yes_no ) %>% 
+  #   select(matches("^RF.*(?<!Spec)$", perl = T)) %>%
+  #   pivot_longer(matches("^RF.*(?<!Spec)$", perl = T)) %>% count(value)
+  # 
+  
+  
+  
   df<-  
     df %>%
+    mutate(., EpisodeDate = make_EpisodeDate(.))  %>% 
+    mutate(., EpisodeType = make_EpisodeType(.))  %>% 
     mutate(., hospstatus = make_hospstatus(.))  %>% 
     mutate(., Hospitalized = make_Hospitalized(.))  #%>% select(Hospitalized, hospstatus)
   
   
-
+  #x <- df$RFCardiacDisease %>% clean_Categorical(good_vals = c(YES_STR, NO_STR, ))
+  
   df <- 
-    df %>% select(PHACID, matches("^RF.*(?<!Spec)$", perl = T)) %>%
-    pivot_longer(matches("^RF.*(?<!Spec)$", perl = T)) %>% #count()
-    mutate(value_y = (value == YES_STR)*1.0, 
-           value_n = (value == NO_STR)*1.0) %>% 
-    group_by(PHACID) %>% summarise(ComorbidityYes = ifelse(sum(value_y) >= 1, YES_STR, ""),
-                                   ComorbidityNo = ifelse(sum(value_n) >= n(), NO_STR, ""),
-                                   CountRF = sum(value_y)
-                                   ) %>% 
-    mutate(Comorbidity = if_else(ComorbidityYes == YES_STR, YES_STR, if_else(ComorbidityNo == NO_STR, NO_STR, UNKNOWN_STR ) )) %>% 
-    inner_join(df, ., by = "PHACID")
+    df %>% 
+    make_Comorbidity_all() %>% 
+    left_join(df, ., by = "PHACID")
+    # 
+    # df %>% select(PHACID, matches("^RF.*(?<!Spec)$", perl = T)) %>%
+    # mutate_at(vars(matches("^RF.*(?<!Spec)$", perl = T)), clean_yes_no ) %>% 
+    # pivot_longer(matches("^RF.*(?<!Spec)$", perl = T)) %>% #count(value, sort = T) %>% view()
+    # mutate(value_y = (value == YES_STR)*1.0, 
+    #        value_n = (value == NO_STR)*1.0) %>% 
+    # group_by(PHACID) %>% summarise(ComorbidityYes = ifelse(sum(value_y) >= 1, YES_STR, ""),
+    #                                ComorbidityNo = ifelse(sum(value_n) >= n(), NO_STR, ""),
+    #                                CountRF = sum(value_y)
+    #                                ) %>% 
+    # mutate(Comorbidity = if_else(ComorbidityYes == YES_STR, YES_STR, if_else(ComorbidityNo == NO_STR, NO_STR, UNKNOWN_STR ) )) %>% #count( ComorbidityYes, ComorbidityNo, CountRF, Comorbidity, sort = T)
+    # left_join(df, ., by = "PHACID")
   
   df <- 
     df %>% 
     make_Asymptomatic_all() %>% 
     left_join(df , ., by = "PHACID")
 
-  
-  df$IndigenousGroup_BOOL <- 
-    df$IndigenousGroup %>% 
-    gsub(pattern = "[^[:alnum:]]", replacement = " ", x = .) %>% 
-    gsub(pattern = "[ ]+", replacement = " ", x = .) %>% 
-    grepl(pattern = "First Nation|Inuit|Metis",x = ., ignore.case = T) 
-  
-  
-  df <- df %>% mutate(Indigenous2 = ifelse(Indigenous == YES_STR | IndigenousGroup_BOOL == TRUE, YES_STR, Indigenous ))  #%>% #count(IndigenousGroup, Indigenous , Indigenous2, sort = T) %>% view()
-# 
+
+  df <- df %>% mutate(., Indigenous2 = make_Indigenous2(.)) 
+#   df$IndigenousGroup_BOOL <- 
+#     df$IndigenousGroup %>% 
+#     gsub(pattern = "[^[:alnum:]]", replacement = " ", x = .) %>% 
+#     gsub(pattern = "[ ]+", replacement = " ", x = .) %>% 
+#     grepl(pattern = "First Nation|Inuit|Metis",x = ., ignore.case = T) 
+#   
+#   
+#   df <- df %>% mutate(Indigenous2 = ifelse(Indigenous == YES_STR | IndigenousGroup_BOOL == TRUE, YES_STR, Indigenous ))  #%>% #count(IndigenousGroup, Indigenous , Indigenous2, sort = T) %>% view()
+# # 
 #   df <- 
 #   countries_tbl %>% 
 #     mutate(ExposureCountry = stringr::str_to_upper(stringr::str_trim(ExposureCountry))) %>% #count(ExposureCountry, sort = T) %>% view()
@@ -878,20 +1092,29 @@ get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(),
   df <- df %>% mutate(., ExposureCountry = make_ExposureCountry(.))
   
   
+  
+  
+  
   df <- 
     df %>% 
     rename(agegroup10 := AgeGroup10, 
            agegroup20 := AgeGroup20, 
            Occupation_Other := Occupation_other,
            Location := LOCATION) %>%
-    select(cols) %>% 
-    #clean_names() %>% select(janitor::make_clean_names(cols)) %>% 
-    mutate_if(.predicate = is.character, clean_str) %>% 
-    mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) %>% 
-    mutate (PHACID = number_2_phacid(PHACID))
+    select(cols)  
+  
+  
+  
+  
+  
+  
+  df <- df %>% make_final_clean_df(report_filter = "qry_allcases", cols = cols)
+    # 
+    # mutate_if(.predicate = is.character, clean_str) %>% 
+    # mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) %>% 
+    # mutate (PHACID = number_2_phacid(PHACID))
   return(df)
 }
-
 
 
 
@@ -1291,6 +1514,7 @@ do_end_of_day_tasks <- function(){
   extract_case_data_domestic_epi()
   extract_case_data_domestic_survelance()
   extract_case_data_get_HCDaily()
+  extract_epi_curves()
 }
 do_end_of_day_tasks()
 
