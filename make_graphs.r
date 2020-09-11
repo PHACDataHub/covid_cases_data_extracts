@@ -29,9 +29,15 @@ get_lbl <- function(str, lang = "en"){
 get_db_counts <- function(con = get_covid_cases_db_con(), 
                           a_tbl = get_flat_case_tbl(con = con),
                           colnm = "Asymptomatic", 
-                          agegrp = "AgeGroup20" ){
+                          agegrp = "AgeGroup20" ,
+                          NA_replace = ""){
+  
+ 
+  a_tbl[colnm] <- if_else(is.na(a_tbl[[colnm]]),NA_replace, a_tbl[[colnm]] ) #%>% table()
   
   a_tbl %>% 
+    #replace_na(list(colnm = NA_replace)) %>%
+    select(colnm, "PT", agegrp) %>% 
     group_by(!!sym(colnm), !!sym("PT"), !!sym(agegrp)) %>% 
     summarise(n = n()) %>% 
     collect() %>% 
@@ -49,7 +55,7 @@ get_db_counts <- function(con = get_covid_cases_db_con(),
 
 
 
-plot_epi_curve <- function(con = get_db_con(), 
+plot_epi_curve <- function(con = get_covid_cases_db_con(), 
                            a_tbl = get_flat_case_tbl(con = con),
                            classifications_allowed = c("Probable", "Confirmed"),
                            dt_col = "OnsetDate",
@@ -166,7 +172,7 @@ extract_single_epi_curve <- function(dt_col,
 extract_epi_curves <- function(report_filter= "epi_curves", 
                                target_dir = get_generic_report_dir("epi_curves"), 
                                dt_col = c("OnsetDate", "ReportedDate"), 
-                               col_col_nm = c("EXPOSURE_CAT", "AgeGroup20", "Asymptomatic", "Indigenous", "Hosp", "ICU")){
+                               col_col_nm = c("EXPOSURE_CAT", "AgeGroup20", "Asymptomatic", "Indigenous", "Hosp", "ICU", "PT")){
   
   if(!get_export_should_write(report_filter= report_filter)){
     print(paste0("Not wrting '",report_filter,"' today."))
@@ -193,6 +199,8 @@ extract_epi_curves <- function(report_filter= "epi_curves",
 
 
 
+
+
 ####################################
 #
 clean_up <- function(v){
@@ -213,11 +221,15 @@ get_pt_is_recorded <- function(case_cnts, min_fraction = 0.9, min_sample = 100, 
   #' Does the PT meat some thrshold of having reported this variable.
   #'
   #'
+  tbl_cols <- tibble(is_recorded_FALSE = numeric(), is_recorded_TRUE = numeric())
+
+  
   tmp <-
     case_cnts %>%
     group_by(pt, is_recorded) %>% 
     summarise(nn = sum(n)) %>% 
     pivot_wider(names_from = is_recorded , values_from = nn, names_prefix = "is_recorded_", values_fill = 0) %>%
+    bind_rows(tbl_cols, .) %>% replace_na(list(is_recorded_FALSE = 0, is_recorded_TRUE = 0)) %>% 
     mutate(total_counts = is_recorded_FALSE + is_recorded_TRUE) %>% 
     mutate(is_recorded_fraction = is_recorded_TRUE/ total_counts) %>%
     mutate(sample_size = total_counts *is_recorded_fraction) %>%
@@ -243,17 +255,17 @@ get_df_2_plot <- function(
   #Ouput_file_nm =  paste0("fraction_", COL_Desc,"_by_age_and_prov_",Sys.Date(),".svg"), 
   min_fraction = 0.9, 
   min_sample = 100, 
-  include_canada = TRUE, 
+  include_canada = F, 
   agegrp = "AgeGroup10",
   alpha = 0.05,
   con = get_covid_cases_db_con(),
-  case_cnts = get_db_counts(con = con, colnm = COL_NM, agegrp = agegrp)
+  ...
 ){
   #'
   #' Returns DF with information about the rate that given column is "positive", by province and age group
   #'
   #'
-
+  case_cnts = get_db_counts(con = con, colnm = COL_NM, agegrp = agegrp, ...)
   
     # Clean the data
   case_cnts <- 
@@ -289,7 +301,7 @@ get_df_2_plot <- function(
   
   cases_total <- 
     case_cnts %>% 
-    filter(is_recorded == TRUE) %>%
+    #filter(is_recorded == TRUE) %>%
     #filter(pt %in% kept_records$pt) %>% 
     mutate(nm = if_else(nm == positive_case, YES_STR, NO_STR)) %>% 
     group_by(nm,  age_group, is_recorded) %>% 
@@ -302,7 +314,9 @@ get_df_2_plot <- function(
   # which provinces kept records
   kept_records <- 
     cases_total %>% 
-    get_pt_is_recorded(min_fraction = min_fraction, min_sample = min_sample, include_canada = include_canada)
+    get_pt_is_recorded(min_fraction = min_fraction, 
+                       min_sample = min_sample, 
+                       include_canada = include_canada)
   
   
   
@@ -369,13 +383,20 @@ get_df_2_plot <- function(
   
 }
 
-
-plot_positives_by_prov <- function(){
+plot_positives_by_prov <- function(COL_NM = "ICU",
+                                   COL_Desc = get_lbl(COL_NM),
+                                   min_fraction = 0.9, 
+                                   include_canada = F, 
+                                   agegrp = "AgeGroup10",
+                                   ...
+                                   ){
 
   df <- get_df_2_plot(COL_NM = COL_NM,
                 #Ouput_file_nm  = Ouput_file_nm,
-                min_fraction = 0.1,
-                include_canada = T )
+                min_fraction = min_fraction,
+                include_canada = include_canada, 
+                agegrp = agegrp, 
+                ... )
   
   
   pp <- 
@@ -389,18 +410,86 @@ plot_positives_by_prov <- function(){
                     x = as.numeric(age_group)), 
                 alpha = 0.5) +
     #geom_col(color = "black", alpha = 0.5) +
-    geom_label(mapping = aes(label = nm_per_yes, color = pt), fill = "white", alpha = 0.5, nudge_x = 0.25, nudge_y = 0.1)+
+    geom_label(mapping = aes(label = nm_per_yes, color = pt, y = upper_CI), fill = "white", alpha = 0.5, nudge_x = 0.25, nudge_y = 0.1, check_overlap = T)+
     
     #geom_smooth() + 
     scale_y_continuous() +
     facet_wrap(vars(lbl)) +
     labs(y = paste0("Fraction ",COL_Desc), 
+         x = get_lbl(agegrp),
+         color = "",
+         fill = "",
          title = paste0("Fraction ",COL_Desc," by age and province"), 
          subtitle = "when substantial fraction of cases reported the relevent information.",
-         caption = Sys.Date()) +
+         caption = paste0("generated on ",Sys.Date())) +
     guides(fill = F, size = F)
   
   
   
   pp
 }
+
+
+
+
+extract_single_positives_by_age_prov <- function(
+  COL_NM,
+  agegrp,
+  report_filter = "by_age_prov",
+  ...,
+  width = 10, 
+  height = 7, 
+  units = "in",  
+  target_dir = get_generic_report_dir(report_filter)
+  
+){
+  
+  print(paste0("saving ", COL_NM))
+  
+  p <- plot_positives_by_prov(COL_NM = COL_NM, agegrp = agegrp, ...)
+  
+  fn = paste0("by_age_prob_", Sys.Date(), "_", COL_NM, "_", agegrp, ".svg")
+  
+  
+  if ( ! dir.exists(target_dir)){
+    dir.create(target_dir, recursive = T)
+  }
+  
+  
+  ggsave(file=file.path(target_dir, fn), 
+         plot=p, 
+         width= width, 
+         height= height,
+         units  = units)
+}
+
+
+extract_positives_by_age_prov <- function(report_filter= "by_age_prov", 
+                               target_dir = get_generic_report_dir(report_filter), 
+                               agegrp = c("AgeGroup20", "AgeGroup10"), 
+                               NA_replace = c("No","","", "", "", ""),
+                               COL_NM = c("COVIDDeath","SymShortnessofBreath","Asymptomatic", "Indigenous", "Hosp", "ICU")){
+
+  if(!get_export_should_write(report_filter= report_filter)){
+    print(paste0("Not wrting '",report_filter,"' today."))
+    return(NULL)
+  }else{
+    print(paste0("Now wrting '",report_filter,"' to '", target_dir , "'"))
+  }
+  
+  if ( ! dir.exists(target_dir)){
+    dir.create(target_dir, recursive = T)
+  }
+  
+  
+  expand.grid(agegrp = agegrp, COL_NM = COL_NM) %>% as_tibble() %>% mutate_all(as.character) %>% 
+    pmap_dfr(function(...) {
+      current <- tibble(...)
+      
+      extract_single_positives_by_age_prov(agegrp = current$agegrp, COL_NM =  current$COL_NM)
+      
+    }) 
+  
+}
+
+

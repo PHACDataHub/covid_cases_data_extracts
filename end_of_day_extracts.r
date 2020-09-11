@@ -19,21 +19,31 @@ library(svglite)
 library(docstring)
 library(writexl)
 library(readxl)
-#library(xlsx)
+library(xlsx)
 library(lubridate)
 #library(RDCOMClient)
 
 source("make_graphs.r")
 
 
-#DIR_OF_DB = file.path("~", "..", "Desktop") 
+
+DIR_OF_HPOC_ROOT = "//Ncr-a_irbv2s/irbv2/PHAC/IDPCB/CIRID/VIPS-SAR/EMERGENCY PREPAREDNESS AND RESPONSE HC4/EMERGENCY EVENT/WUHAN UNKNOWN PNEU - 2020"
+
+DIR_OF_DB = file.path("~", "..", "Desktop") 
 #NAME_DB = "COVID-19_v2.accdb"
-DIR_OF_DB = "~"
+#DIR_OF_DB = file.path("~", "..", "Desktop")#"~"
+#DIR_OF_DB = file.path(DIR_OF_HPOC_ROOT, "DATA AND ANALYSIS", "DATABASE", "MS ACCESS")#"~"
+
+# 
 DIR_OF_DB_2_BACK_UP = file.path("~", "..", "Desktop")
-NAME_DB = "Case.xlsx"
+DIR_OF_DB_2_BACK_UP_INTO = file.path(DIR_OF_HPOC_ROOT, "DATA AND ANALYSIS", "DATABASE", "MS ACCESS", "BACKUP")
+#DIR_OF_DB_2_BACK_UP = file.path(DIR_OF_HPOC_ROOT, "DATA AND ANALYSIS", "DATABASE", "MS ACCESS")#"~"
+
+
+NAME_DB = "COVID-19_v2.accdb"#"Case.xlsx"
 NAME_DB_2_BACK_UP = "COVID-19_v2.accdb"
 
-#DIR_OF_INPUT = "//Ncr-a_irbv2s/irbv2/PHAC/IDPCB/CIRID/VIPS-SAR/EMERGENCY PREPAREDNESS AND RESPONSE HC4/EMERGENCY EVENT/WUHAN UNKNOWN PNEU - 2020/DATA AND ANALYSIS/DATABASE/R"
+
 #DIR_OF_OUTPUT = "//Ncr-a_irbv2s/irbv2/PHAC/IDPCB/CIRID/VIPS-SAR/EMERGENCY PREPAREDNESS AND RESPONSE HC4/EMERGENCY EVENT/WUHAN UNKNOWN PNEU - 2020/DATA AND ANALYSIS/DATABASE/R/output"
 #DIR_OF_OUTPUT = "~"
 DIR_OF_INPUT = getwd()
@@ -45,8 +55,8 @@ UNKNOWN_STR = "UNKNOWN"
 #BLANK_VALUE_STR = "BLANK"
 BLANK_VALUE_STR = ""
 NOT_STATED_STR = "Not stated"
-#DEF_TYPE_DB = "MS_Access"
-DEF_TYPE_DB = "xlsx"
+DEF_TYPE_DB = "MS_Access"
+#DEF_TYPE_DB = "xlsx"
 OUTPUT_DATE_FORMAT = "%Y-%m-%d"
 
 
@@ -70,11 +80,11 @@ get_covid_cases_db_con <- function(
   #' 
   con <- NULL
   if (db_type == "MS_Access"){
-    print("getting Con")
+    print(paste0("getting Con for ", db_type, " at ", db_full_nm))
     con <- dbConnect(odbc::odbc(),
                      .connection_string = paste0("Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=", 
                                                  db_full_nm, 
-                                                 ";PWD=", db_pwd))
+                                                 ";PWD=", db_pwd, ";ReadOnly=1;applicationintent=readonly;"))
   }else if (db_type == "xlsx"){
     #TODO : ODBC is having issues on Jenne compuiter so we pretend its a DB connection
     return(db_full_nm)
@@ -288,10 +298,16 @@ insert_str <- function(x, insert_str = "-", afterPos){
 
 get_db_tbl_IN_MEM_CACHE <- list()
 get_db_tbl <- function(con = get_covid_cases_db_con(),
-                       tlb_nm = "case"){
+                       tlb_nm = "case",
+                       force_refresh = F){
   #' gets a raw tabie from a DB connections
   #' this will have a memmory cache to avoid multiple feteches 
   #'
+  
+  if (force_refresh){
+    get_db_tbl_IN_MEM_CACHE[[tlb_nm]]  <<- NULL
+  }
+  
   if (is.null(get_db_tbl_IN_MEM_CACHE[[tlb_nm]])){
     print(paste0("Fetching and memmory caching '",tlb_nm,"'."))
     tic <- Sys.time()
@@ -307,6 +323,10 @@ get_db_tbl <- function(con = get_covid_cases_db_con(),
   }
   return(get_db_tbl_IN_MEM_CACHE[[tlb_nm]])
 }
+
+
+
+
 
 
 get_flat_case_tbl <- function(con = get_covid_cases_db_con(), flatten = F){
@@ -329,8 +349,14 @@ get_flat_case_tbl <- function(con = get_covid_cases_db_con(), flatten = F){
   ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
     select_if(is.logical) %>%
     mutate_all(function(x){as.Date(as.numeric(x),origin = "1899-12-30")})
-
+,
+ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
+  select_if(function(x) inherits(x, "POSIXct")) %>%
+  mutate_all(as_date)
     )
+
+  
+  #mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date)
   
   ret_df <- bind_cols(
   ret_df[! colnames(ret_df) %in% colnames(df_dts)] ,
@@ -468,7 +494,10 @@ get_WHO_dir <- function(report_filter = "WHO",
   get_reports_dir_locations(...) %>% 
     filter(report == report_filter) %>% pull(dir)
 }
-
+get_report_dir <- function(report_filter, ...){
+  get_reports_dir_locations(...) %>% 
+    filter(report == report_filter) %>% pull(dir)
+}
 
 
 get_case_data_domestic_epi_cols <- function(report_filter = "qry_allcases", 
@@ -895,13 +924,16 @@ make_final_clean_df <- function(df,
 
 
 get_WHO <- function(con = get_covid_cases_db_con(), 
-                         df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed", "Probable")),
-                         cols = get_whp_cols()){
-  
+                         #df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed", "Probable")),
+                         cols = get_WHO_cols()
+                    ){
+  df <- get_db_tbl(con = con, tlb_nm = "WHO")#, force_refresh = T)
+  df %>% 
+    make_final_clean_df(report_filter = "WHO", cols = cols)
   
   
 }
-
+#get_WHO()
 
 
 get_StatsCan <- function(con = get_covid_cases_db_con(), 
@@ -983,6 +1015,42 @@ get_HCDaily <- function(con = get_covid_cases_db_con(),
   
 }
 
+
+get_completness_analysis <- function(con = get_covid_cases_db_con(),
+                                      df = get_flat_case_tbl(con) %>% filter(Classification %in% c("Probable", "Confirmed"))
+)
+{
+  df2 <- 
+    df %>% 
+    make_final_clean_df(., report_filter = "QWER",  cols = colnames(.), cols_2_clean = colnames(.))
+    
+  df2_missing <-     
+    df2 %>% mutate_at(vars(!all_of(c("PHACID", "PT"))),
+    function(x){
+      is.na(x) | nchar(x) == 0
+    })
+  
+  
+  cols <- df2_missing %>% select(-c("PHACID", "PT")) %>% colnames() 
+  
+  base <- expand.grid(PT = unique(df$PT), TF = c(TRUE, FALSE))
+  
+  
+  df2_missing_n <- 
+  lapply(cols, function(col){
+    df2_missing %>% count(PT, !!sym(col)) %>% 
+      mutate(colnm = col) %>%
+      rename(TF := !!sym(col))
+  }) %>% bind_rows()
+  
+  df2_missing_n %>% 
+    pivot_wider(names_from = TF,values_from = n,values_fill = 0) %>% clean_names() %>% 
+    mutate(total = false + true) %>%
+    mutate(fraction_complete = false/total) %>% 
+    rename(has_data := false, no_data := true) %>% 
+    pivot_wider(names_from = pt, values_from = c("has_data",  "no_data", "total", "fraction_complete"))
+  
+}
 
 
 get_domestic_survelance <- function(con = get_covid_cases_db_con(), 
@@ -1128,28 +1196,28 @@ get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(),
 
 ######################################
 #
-get_db_error_report_by_case_error_Residency_canadian<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_error_Residency_canadian<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     filter(Residency == "" & nchar(ResidenceCountry) > 0) %>% 
     select(PHACID) %>% 
     mutate(err = "Residency is unspecified, yet ResidenceCountry is not blank.")%>% collect() %>% 
     mutate(typ = "Residency" )
 }
-get_db_error_report_by_case_error_Residency_canadian_but_not<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_error_Residency_canadian_but_not<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     filter(Residency == "Canadian resident" & !(ResidenceCountry == "CANADA")) %>% 
     select(PHACID) %>% 
     mutate(err = "Residency is Canadian, yet ResidenceCountry is not.")%>% collect() %>% 
     mutate(typ = "Residency" )
 }
-get_db_error_report_by_case_error_Age_Age_group<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_error_Age_Age_group<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     filter(!is.na(Age) & (tolower(AgeGroup10) == tolower("Unknown") | tolower(AgeGroup20) == tolower("Unknown") )) %>% 
     select(PHACID) %>% 
     mutate(err = "Exact Age is given but Agegroup is listed as unkown.")%>% collect() %>% 
     mutate(typ = "Age" )
 }
-get_db_error_report_by_case_error_Age_Age_units<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_error_Age_Age_units<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     filter(!is.na(Age) & AgeUnit == "") %>% 
     select(PHACID) %>% 
@@ -1158,7 +1226,7 @@ get_db_error_report_by_case_error_Age_Age_units<- function(con = get_db_con(), a
 }
 
 
-get_db_error_report_by_case_Sym<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_Sym<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     filter(tolower(Asymptomatic) == "yes" ) %>% 
     select(PHACID, Asymptomatic, matches("^Sym")) %>% 
@@ -1174,7 +1242,7 @@ get_db_error_report_by_case_Sym<- function(con = get_db_con(), a_tbl = tbl(con, 
     mutate(typ = "symptoms" )
 }
 
-get_db_error_report_by_case_Hosp<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_Hosp<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     select(PHACID, Hosp, HospStartDate, HospEndDate) %>% 
     #filter(tolower(Hosp) == "no" | tolower(Hosp) == "unknown" | Hosp == "") %>% 
@@ -1186,7 +1254,7 @@ get_db_error_report_by_case_Hosp<- function(con = get_db_con(), a_tbl = tbl(con,
     mutate(typ = "Hosp" )
 }
 
-get_db_error_report_by_case_ICU<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_ICU<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     select(PHACID, ICU, ICUStartDate, ICUEndDate) %>% 
     #filter(tolower(Hosp) == "no" | tolower(Hosp) == "unknown" | Hosp == "") %>% 
@@ -1199,7 +1267,7 @@ get_db_error_report_by_case_ICU<- function(con = get_db_con(), a_tbl = tbl(con, 
 }
 
 
-get_db_error_report_by_case_Isolation<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_Isolation<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     select(PHACID, Isolation, IsolationStartDate, IsolationEndDate) %>% 
     #filter(tolower(Hosp) == "no" | tolower(Hosp) == "unknown" | Hosp == "") %>% 
@@ -1212,7 +1280,7 @@ get_db_error_report_by_case_Isolation<- function(con = get_db_con(), a_tbl = tbl
 }
 
 
-get_db_error_report_by_case_vent<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_vent<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     filter(!tolower(MechanicalVent) == "yes") %>% 
     filter(! is.na(VentStartDate) | ! is.na(VentEndDate) ) %>% 
@@ -1222,7 +1290,7 @@ get_db_error_report_by_case_vent<- function(con = get_db_con(), a_tbl = tbl(con,
     select(PHACID, err) %>% 
     mutate(typ = "vent" )
 }
-get_db_error_report_by_case_Reovered<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_Reovered<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     select(PHACID, Disposition, RecoveryDate) %>% 
     #filter(tolower(Hosp) == "no" | tolower(Hosp) == "unknown" | Hosp == "") %>% 
@@ -1233,7 +1301,7 @@ get_db_error_report_by_case_Reovered<- function(con = get_db_con(), a_tbl = tbl(
     select(PHACID, err)  %>% collect() %>% 
     mutate(typ = "Recovered" )
 }
-get_db_error_report_by_case_Death<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_Death<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     select(PHACID, Disposition, DeathDate) %>% 
     #filter(tolower(Hosp) == "no" | tolower(Hosp) == "unknown" | Hosp == "") %>% 
@@ -1247,7 +1315,7 @@ get_db_error_report_by_case_Death<- function(con = get_db_con(), a_tbl = tbl(con
 
 
 
-get_db_error_report_by_case_travel<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_travel<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   tmp_df <- 
     a_tbl %>% 
     filter((!tolower(Travel) == "yes")) %>% 
@@ -1267,7 +1335,7 @@ get_db_error_report_by_case_travel<- function(con = get_db_con(), a_tbl = tbl(co
     mutate(typ = "Travel" )
 }
 
-get_db_error_report_by_case_close<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_close<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   tmp_df <- 
     a_tbl %>% 
     filter((!tolower(CloseContactCase) == "yes")) %>% 
@@ -1291,7 +1359,7 @@ get_db_error_report_by_case_close<- function(con = get_db_con(), a_tbl = tbl(con
 
 
 
-get_db_error_report_by_case_Dead_and_alive<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_Dead_and_alive<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     filter( (! is.na(DeathDate)) &  (! is.na(RecoveryDate)) ) %>% 
     select(PHACID, DeathDate, RecoveryDate) %>% 
@@ -1300,7 +1368,7 @@ get_db_error_report_by_case_Dead_and_alive<- function(con = get_db_con(), a_tbl 
     mutate(typ = "DeadorAlive" )
 }
 
-get_db_error_report_by_case_dead_before_onset<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_dead_before_onset<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     filter( (! is.na(DeathDate)) &  (! is.na(OnsetDate)) ) %>% 
     filter( DeathDate < OnsetDate) %>% 
@@ -1311,7 +1379,7 @@ get_db_error_report_by_case_dead_before_onset<- function(con = get_db_con(), a_t
 }
 
 
-get_db_error_report_by_case_recovered_before_onset<- function(con = get_db_con(), a_tbl = tbl(con, "case") ){
+get_db_error_report_by_case_recovered_before_onset<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     filter( (! is.na(RecoveryDate)) &  (! is.na(OnsetDate)) ) %>% 
     filter( RecoveryDate < OnsetDate) %>% 
@@ -1322,7 +1390,7 @@ get_db_error_report_by_case_recovered_before_onset<- function(con = get_db_con()
 }
 
 
-get_db_error_report_by_case_teasting_CloseContact_disagree<- function(con = get_db_con(), a_tbl = get_flat_case_tbl(con = con) ){
+get_db_error_report_by_case_teasting_CloseContact_disagree<- function(con = get_covid_cases_db_con(), a_tbl = get_flat_case_tbl(con = con) ){
   #' Generates Error List on DB
   a_tbl %>% 
     filter( TestingReason == "Contact of a case" &  (!CloseContactCase ==  "Yes")) %>% 
@@ -1332,7 +1400,7 @@ get_db_error_report_by_case_teasting_CloseContact_disagree<- function(con = get_
     mutate(typ = "Contact Testing Reason" )
 }
 
-get_db_error_report_by_case_COVIDDeath_Disposition_disagree<- function(con = get_db_con(), a_tbl = get_flat_case_tbl(con = con) ){
+get_db_error_report_by_case_COVIDDeath_Disposition_disagree<- function(con = get_covid_cases_db_con(), a_tbl = get_flat_case_tbl(con = con) ){
   #' Generates Error List on DB
   a_tbl %>% 
     select(PHACID, COVIDDeath, Disposition) %>% 
@@ -1349,7 +1417,7 @@ get_db_error_report_by_case_COVIDDeath_Disposition_disagree<- function(con = get
 
 ###########################################
 #
-get_db_error_report_by_case <- function(con = get_db_con(), a_tbl = get_flat_case_tbl(con = con)){
+get_db_error_report_by_case <- function(con = get_covid_cases_db_con(), a_tbl = get_flat_case_tbl(con = con)){
   
   errs <- 
     bind_rows(
@@ -1387,7 +1455,7 @@ get_db_error_report_by_case <- function(con = get_db_con(), a_tbl = get_flat_cas
 
 
 
-extract_table_report <- function(df_fun, fn, report_filter, ...){
+extract_table_report <- function(df_fun, fn, report_filter, password = NULL, ...){
   
   if(!get_export_should_write(report_filter= report_filter)){
     print(paste0("Not wrting '",report_filter,"' today."))
@@ -1414,6 +1482,16 @@ extract_table_report <- function(df_fun, fn, report_filter, ...){
                       col_names = TRUE,
                       format_headers = TRUE,
                       use_zip64 = FALSE)
+  
+  # xlsx::write.xlsx(x = df, 
+  #            file = fn, 
+  #            col.names=TRUE, 
+  #            row.names=FALSE, 
+  #            append=FALSE, 
+  #            showNA=FALSE, 
+  #            password=password)
+  
+  
   toc <- Sys.time()
   print(paste0("took ", format(toc - tic), " to write data"))
 }
@@ -1423,7 +1501,7 @@ extract_table_report <- function(df_fun, fn, report_filter, ...){
 extract_case_db_errs <- function(){
   extract_table_report(df_fun = get_db_error_report_by_case, 
                        fn = path.expand( file.path(get_case_db_errs_dir(), 
-                                                   paste0("db_errs "  , format(Sys.Date() ,"%Y-%m-%d"), ".xlsx")
+                                                   paste0("db_errs "  , format(Sys.Date() ,"%Y-%m-%d"), "_SEMI_AUTOMATED.xlsx")
                        )),
                        report_filter = "db_errs"
   )
@@ -1434,7 +1512,7 @@ extract_case_db_errs <- function(){
 extract_case_data_domestic_epi <- function(){
   extract_table_report(df_fun = get_case_data_domestic_epi, 
                        fn = path.expand( file.path(get_case_data_domestic_epi_dir(), 
-                                                   paste0("qry_allcases "  , format(Sys.Date() ,"%m-%d-%Y"), ".xlsx")
+                                                   paste0("qry_allcases "  , format(Sys.Date() ,"%m-%d-%Y"), "_SEMI_AUTOMATED.xlsx")
                        )),
                        report_filter = "qry_allcases"
   )
@@ -1444,7 +1522,7 @@ extract_case_data_domestic_epi <- function(){
 extract_case_data_domestic_survelance <- function(){
   extract_table_report(df_fun = get_domestic_survelance, 
                        fn = path.expand( file.path(get_domestic_survelance_dir(), 
-                                                   paste0("Domestic surveillance data - "  , format(Sys.Date() ,"%Y-%m-%d"), ".xlsx")
+                                                   paste0("Domestic surveillance data - "  , format(Sys.Date() ,"%Y-%m-%d"), "_SEMI_AUTOMATED.xlsx")
                        )),
                        report_filter = "Domestic surveillance"
   )
@@ -1452,27 +1530,64 @@ extract_case_data_domestic_survelance <- function(){
 
 
 extract_case_data_get_HCDaily <- function(){
+  
+  fn = paste0(format(Sys.Date() ,"%Y%m%d"), "_HCDaily_SEMI_AUTOMATED.xlsx")
+  full_fn = path.expand( file.path(get_HCDaily_dir(), fn))
+  
+  
   extract_table_report(df_fun = get_HCDaily, 
-                       fn = path.expand( file.path(get_HCDaily_dir(), 
-                                                   paste0(format(Sys.Date() ,"%Y%m%d"), "_HCDaily.xlsx")
-                       )),
+                       fn = full_fn,
                        report_filter = "HCDaily"
   )
+  
+  
+  target_fn = file.path("//Ncr-a-phacc1s/phacc1/HPOC/Active Events/001-20 COVID-19/Dashboard",fn )
+
+  
+  print(paste0("Now I am copying over the HC report to the new location: on 'L:' Drive current time is ", Sys.time()))
+  file.copy(full_fn, target_fn, overwrite = FALSE, recursive = FALSE,
+            copy.mode = TRUE, copy.date = TRUE)
   
   
 }
 
 
 extract_case_data_get_StatsCan <- function(){
+  fn = paste0("Weekly Extended Dataset_", format(Sys.Date() ,"%Y%m%d"), "_SEMI_AUTOMATED.xlsx")
+  full_fn = path.expand( file.path(get_StatsCan_dir(), fn))
+  
   extract_table_report(df_fun = get_StatsCan, 
-                       fn = path.expand( file.path(get_StatsCan_dir(), 
-                                                   paste0("Weekly Extended Dataset_", format(Sys.Date() ,"%Y%m%d"), ".xlsx")
-                       )),
+                       fn = full_fn,
                        report_filter = "STATCAN"
   )
+
   
 
 }
+
+extract_case_data_get_WHO <- function(){
+  extract_table_report(df_fun = get_WHO, 
+                       #password = keyring::key_get(),
+                       fn = path.expand( file.path(get_WHO_dir(), 
+                                                   paste0("Canada_COVID19_WHO_linelist-", format(Sys.Date() ,"%d%B%Y"), "_SEMI_AUTOMATED.xlsx")
+                       )),
+                       report_filter = "WHO",
+  )
+  
+}
+extract_case_data_get_get_completness_analysis <- function(){
+  extract_table_report(df_fun = get_completness_analysis, 
+                       #password = keyring::key_get(),
+                       fn = path.expand( file.path(get_report_dir("Completness"), 
+                                                   paste0("completness-", format(Sys.Date() ,"%Y-%m-%d"), "_SEMI_AUTOMATED.xlsx")
+                       )),
+                       report_filter = "Completness",
+  )
+  
+}
+
+
+
 
 
 backup_db <- function(full_fn = file.path(DIR_OF_DB_2_BACK_UP, NAME_DB_2_BACK_UP),
@@ -1491,6 +1606,7 @@ backup_db <- function(full_fn = file.path(DIR_OF_DB_2_BACK_UP, NAME_DB_2_BACK_UP
   
   print(paste0("backing up database to '", target_fn, "'"))
   tic = Sys.time()
+  print(paste0("current time is ", Sys.time(), ", this can take 15 minutes with a slow network...."))
   file.copy(full_fn, target_fn, overwrite = FALSE, recursive = FALSE,
            copy.mode = TRUE, copy.date = TRUE)
   toc = Sys.time()
@@ -1532,6 +1648,8 @@ do_end_of_day_tasks <- function(){
   extract_case_data_domestic_epi()
   extract_case_data_domestic_survelance()
   extract_case_data_get_HCDaily()
+  extract_case_data_get_get_completness_analysis()
+  extract_case_data_get_WHO()
   extract_epi_curves()
 }
 do_end_of_day_tasks()
