@@ -1413,6 +1413,16 @@ get_db_error_report_by_case_COVIDDeath_Disposition_disagree<- function(con = get
 }
 
 
+get_db_error_report_by_case_PHAC_report_before_episode<- function(con = get_covid_cases_db_con(), a_tbl = get_flat_case_tbl(con = con) ){
+  a_tbl %>% 
+    mutate(., EpisodeDate = make_EpisodeDate(.)) %>% 
+    filter( (! is.na(EpisodeDate)) &  (! is.na(PHACReportedDate)) ) %>% 
+    filter( PHACReportedDate < EpisodeDate) %>% 
+    select(PHACID, PHACReportedDate, EpisodeDate) %>% 
+    mutate(err = paste0("PHACReported before EpisodeDate '",PHACReportedDate,"' < '",EpisodeDate,"'") ) %>% 
+    select(PHACID, err)  %>% collect() %>% 
+    mutate(typ = "Early PHACReported" )
+}
 
 
 ###########################################
@@ -1437,7 +1447,8 @@ get_db_error_report_by_case <- function(con = get_covid_cases_db_con(), a_tbl = 
       get_db_error_report_by_case_recovered_before_onset(a_tbl = a_tbl),
       get_db_error_report_by_case_travel(a_tbl = a_tbl),
       get_db_error_report_by_case_teasting_CloseContact_disagree(a_tbl = a_tbl),
-      get_db_error_report_by_case_COVIDDeath_Disposition_disagree(a_tbl = a_tbl)
+      get_db_error_report_by_case_COVIDDeath_Disposition_disagree(a_tbl = a_tbl),
+      get_db_error_report_by_case_PHAC_report_before_episode(a_tbl = a_tbl)
       ) %>% arrange(PHACID)
   
   ids <- unique(errs$PHACID)
@@ -1591,7 +1602,7 @@ extract_case_data_get_get_completness_analysis <- function(){
 
 
 backup_db <- function(full_fn = file.path(DIR_OF_DB_2_BACK_UP, NAME_DB_2_BACK_UP),
-                      base_backup_location = file.path(dirname(full_fn), "BACKUP")
+                      base_backup_location = DIR_OF_DB_2_BACK_UP_INTO #file.path(DIR_OF_DB_2_BACK_UP_INTO, "BACKUP")
                         ){
   
   
@@ -1641,6 +1652,10 @@ backup_db <- function(full_fn = file.path(DIR_OF_DB_2_BACK_UP, NAME_DB_2_BACK_UP
 #   gc()
 #   
 # }
+
+
+
+
 do_end_of_day_tasks <- function(){
   backup_db()
   extract_case_db_errs()
@@ -1651,6 +1666,7 @@ do_end_of_day_tasks <- function(){
   extract_case_data_get_get_completness_analysis()
   extract_case_data_get_WHO()
   extract_epi_curves()
+  extract_positives_by_age_prov()
 }
 do_end_of_day_tasks()
 

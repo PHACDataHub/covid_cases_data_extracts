@@ -252,6 +252,7 @@ get_pt_is_recorded <- function(case_cnts, min_fraction = 0.9, min_sample = 100, 
 get_df_2_plot <- function(
   COL_NM,
   COL_Desc = get_lbl(COL_NM),
+  NA_replace = "",
   #Ouput_file_nm =  paste0("fraction_", COL_Desc,"_by_age_and_prov_",Sys.Date(),".svg"), 
   min_fraction = 0.9, 
   min_sample = 100, 
@@ -265,7 +266,7 @@ get_df_2_plot <- function(
   #' Returns DF with information about the rate that given column is "positive", by province and age group
   #'
   #'
-  case_cnts = get_db_counts(con = con, colnm = COL_NM, agegrp = agegrp, ...)
+  case_cnts = get_db_counts(con = con, colnm = COL_NM, agegrp = agegrp, NA_replace = NA_replace, ...)
   
     # Clean the data
   case_cnts <- 
@@ -385,6 +386,7 @@ get_df_2_plot <- function(
 
 plot_positives_by_prov <- function(COL_NM = "ICU",
                                    COL_Desc = get_lbl(COL_NM),
+                                   NA_replace = "",
                                    min_fraction = 0.9, 
                                    include_canada = F, 
                                    agegrp = "AgeGroup10",
@@ -396,6 +398,7 @@ plot_positives_by_prov <- function(COL_NM = "ICU",
                 min_fraction = min_fraction,
                 include_canada = include_canada, 
                 agegrp = agegrp, 
+                NA_replace = NA_replace,
                 ... )
   
   
@@ -435,6 +438,7 @@ plot_positives_by_prov <- function(COL_NM = "ICU",
 extract_single_positives_by_age_prov <- function(
   COL_NM,
   agegrp,
+  NA_replace,
   report_filter = "by_age_prov",
   ...,
   width = 10, 
@@ -446,7 +450,7 @@ extract_single_positives_by_age_prov <- function(
   
   print(paste0("saving ", COL_NM))
   
-  p <- plot_positives_by_prov(COL_NM = COL_NM, agegrp = agegrp, ...)
+  p <- plot_positives_by_prov(COL_NM = COL_NM, agegrp = agegrp, NA_replace = NA_replace, ...)
   
   fn = paste0("by_age_prob_", Sys.Date(), "_", COL_NM, "_", agegrp, ".svg")
   
@@ -481,12 +485,13 @@ extract_positives_by_age_prov <- function(report_filter= "by_age_prov",
     dir.create(target_dir, recursive = T)
   }
   
+  tibble(COL_NM = COL_NM, NA_replace = NA_replace) %>% expand_grid(agegrp = agegrp)%>% mutate_all(as.character) %>%
   
-  expand.grid(agegrp = agegrp, COL_NM = COL_NM) %>% as_tibble() %>% mutate_all(as.character) %>% 
+  #expand.grid(agegrp = agegrp, COL_NM = COL_NM) %>% as_tibble() %>% mutate_all(as.character) %>% 
     pmap_dfr(function(...) {
       current <- tibble(...)
       
-      extract_single_positives_by_age_prov(agegrp = current$agegrp, COL_NM =  current$COL_NM)
+      extract_single_positives_by_age_prov(agegrp = current$agegrp, COL_NM =  current$COL_NM, NA_replace = current$NA_replace)
       
     }) 
   
