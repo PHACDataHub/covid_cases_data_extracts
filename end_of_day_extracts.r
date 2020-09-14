@@ -342,17 +342,17 @@ get_flat_case_tbl <- function(con = get_covid_cases_db_con(), flatten = F){
   }
   df_dts <-
     bind_cols(
-  ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
-    select_if(is.character) %>%
-    mutate_all(function(x){as.Date(as.numeric(x),origin = "1899-12-30")})
-,
-  ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
-    select_if(is.logical) %>%
-    mutate_all(function(x){as.Date(as.numeric(x),origin = "1899-12-30")})
-,
-ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
-  select_if(function(x) inherits(x, "POSIXct")) %>%
-  mutate_all(as_date)
+        ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
+          select_if(is.character) %>%
+          mutate_all(function(x){as.Date(as.numeric(x),origin = "1899-12-30")})
+      ,
+        ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
+          select_if(is.logical) %>%
+          mutate_all(function(x){as.Date(as.numeric(x),origin = "1899-12-30")})
+      ,
+      ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
+        select_if(function(x) inherits(x, "POSIXct")) %>%
+        mutate_all(as_date)
     )
 
   
@@ -362,7 +362,12 @@ ret_df %>% select(matches("Date", ignore.case = F)) %>% #count(HospStartDate)
   ret_df[! colnames(ret_df) %in% colnames(df_dts)] ,
   df_dts
   )
-    
+  
+  # This preserves the Accents
+  lapply(ret_df %>% select_if(is.character) %>% colnames(), function(col_nm){
+    Encoding(ret_df[[col_nm]]) <<- 'latin1'
+  })
+  
     
   return(ret_df)
 }
@@ -553,6 +558,18 @@ make_hospstatus <- function(df){
   #' return vector indicating hospital status
   #'
   #'@param df must have all of the following columns, ICU, MechanicalVent, Hosp, ICUStartDate, HospStartDate
+  #'
+  #'
+  
+  #  This is the SQL code to generate it
+  #  hospstatus: IIf(ICU="Yes" Or icustartdate Is Not Null Or mechanicalvent="Yes",
+  #                 "Hospitalized - ICU",
+  #                 
+  #                 IIf(hosp="Yes" Or hospstartdate Is Not Null,
+  #                     "Hospitalized - non-ICU",
+  #                     IIf(hosp="No","Not hospitalized","Unknown")))
+  
+  
   df %>% 
     select(c("ICU", "MechanicalVent", "Hosp", "ICUStartDate", "HospStartDate", "VentStartDate")) %>% 
     mutate_at(vars(any_of(c("ICU", "MechanicalVent", "Hosp"))), clean_yes_no ) %>% 
@@ -561,7 +578,7 @@ make_hospstatus <- function(df){
                       "Hospitalized - ICU",
                       if_else( Hosp == YES_STR | !is.na(HospStartDate), 
                                "Hospitalized - non-ICU",
-                               if_else( toupper(Hosp) == NO_STR | !is.na(HospStartDate), 
+                               if_else( Hosp == NO_STR | !is.na(HospStartDate), 
                                         "Not hospitalized",
                                         UNKNOWN_STR
                                )
@@ -853,10 +870,10 @@ make_RecoveryDate2 <- function(df){
   df2 <- if("Disposition2" %in% colnames(df)){
     df %>% select(RecoveryDate, Disposition2)
   }else{
-    df %>% mutate(., Disposition2 = make_Disposition2(.))%>% select(RecoveryDate, Disposition2)
+    df %>% mutate(., Disposition2 = make_Disposition2(.)) %>% select(RecoveryDate, Disposition2)
   }
   
-  df2 %>% mutate(RecoveryDate2 = as_datetime(ifelse(Disposition2 == "Recovered", RecoveryDate, NA ))) %>% pull(RecoveryDate2)
+  df2 %>% mutate(RecoveryDate2 = as.Date(ifelse(Disposition2 == "Recovered", RecoveryDate, NA ))) %>% pull(RecoveryDate2)
 }
 
 
@@ -1416,13 +1433,37 @@ get_db_error_report_by_case_COVIDDeath_Disposition_disagree<- function(con = get
 get_db_error_report_by_case_PHAC_report_before_episode<- function(con = get_covid_cases_db_con(), a_tbl = get_flat_case_tbl(con = con) ){
   a_tbl %>% 
     mutate(., EpisodeDate = make_EpisodeDate(.)) %>% 
+    mutate(., EpisodeType = make_EpisodeType(.)) %>% 
     filter( (! is.na(EpisodeDate)) &  (! is.na(PHACReportedDate)) ) %>% 
     filter( PHACReportedDate < EpisodeDate) %>% 
-    select(PHACID, PHACReportedDate, EpisodeDate) %>% 
+    mutate(delta_days = PHACReportedDate - EpisodeDate) %>% 
+    select(PHACID, PHACReportedDate, EpisodeDate, EpisodeType, delta_days, Classification) %>% 
     mutate(err = paste0("PHACReported before EpisodeDate '",PHACReportedDate,"' < '",EpisodeDate,"'") ) %>% 
     select(PHACID, err)  %>% collect() %>% 
     mutate(typ = "Early PHACReported" )
 }
+
+
+get_db_error_report_by_case_future_dates<- function(con = get_covid_cases_db_con(), a_tbl = get_flat_case_tbl(con = con) ){
+  
+  tmp <- 
+    a_tbl %>% 
+    select(matches("Date")) %>%
+    select_if(is.Date) 
+    
+  col_nms <- colnames(tmp)
+  #select(PHACReportedDate, ReportedDate) %>% 
+    #mutate(a = PHACReportedDate > Sys.Date()) %>% select(a) %>% table()
+  tmp %>%   mutate_all(function(x){x > Sys.Date()}) %>%
+    bind_cols(a_tbl %>% select(PHACID), .) %>% 
+    pivot_longer(cols = matches("Date"), values_drop_n = T) %>% 
+    filter(value == T) %>% 
+    mutate(err = paste0(name , " is in the future? spooky!") ) %>% 
+    select(PHACID, err)  %>% collect() %>% 
+    mutate(typ = "Future Date" )
+
+}
+
 
 
 ###########################################
@@ -1448,7 +1489,8 @@ get_db_error_report_by_case <- function(con = get_covid_cases_db_con(), a_tbl = 
       get_db_error_report_by_case_travel(a_tbl = a_tbl),
       get_db_error_report_by_case_teasting_CloseContact_disagree(a_tbl = a_tbl),
       get_db_error_report_by_case_COVIDDeath_Disposition_disagree(a_tbl = a_tbl),
-      get_db_error_report_by_case_PHAC_report_before_episode(a_tbl = a_tbl)
+      get_db_error_report_by_case_PHAC_report_before_episode(a_tbl = a_tbl),
+      get_db_error_report_by_case_future_dates(a_tbl = a_tbl)
       ) %>% arrange(PHACID)
   
   ids <- unique(errs$PHACID)
