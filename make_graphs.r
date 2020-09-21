@@ -730,6 +730,9 @@ extract_positives_by_age_prov <- function(report_filter= "by_age_prov",
   
 }
 
+
+#a_tbl
+
 # 
 # plot_survival_curve <- function(con = get_covid_cases_db_con(),
 #                            a_tbl = get_flat_case_tbl(con = con),

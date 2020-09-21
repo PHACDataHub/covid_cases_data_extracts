@@ -121,3 +121,23 @@ a_tbl %>%
   count( PT, Month_onset, EXPOSURE_CAT) %>% write.csv("international.csv")
 getwd()
 
+
+
+con = get_covid_cases_db_con()
+a_tbl = get_flat_case_tbl(con = con)
+
+
+a_tbl %>% 
+  mutate(report_delay = ReportedDate -OnsetDate) %>%
+  group_by(PT) %>% mutate(n = n()) %>%
+  filter((!is.na(ReportedDate)) | (!is.na(OnsetDate))) %>%
+  filter(!is.na(report_delay)) %>%
+  filter(!is.na(AgeGroup20)) %>%
+  filter(AgeGroup20 != "Unknown") %>%
+  filter(n >= 1000) %>%
+  ggplot(aes(x = report_delay, fill = PT)) + 
+  geom_bar(alpha = 0.5) +
+  scale_x_continuous(limits = c(-3, 21)) +
+  facet_wrap( vars(PT), scales = "free_y")
+  #facet_grid(rows = vars(PT), cols = vars(AgeGroup20), scales = "free_y")
+  

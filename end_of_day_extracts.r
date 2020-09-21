@@ -968,8 +968,8 @@ make_final_clean_df <- function(df,
   df[!colnames(df) %in% colnames(df_cleaned)] %>%
     bind_cols(., df_cleaned) %>%
     select(cols) %>% 
-    mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) %>%
-    mutate_if(is.Date, format, OUTPUT_DATE_FORMAT)
+    mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date)# %>%
+    #mutate_if(is.Date, format, OUTPUT_DATE_FORMAT)
   
   
   
@@ -1322,7 +1322,7 @@ get_db_error_report_by_case_error_Residency_canadian<- function(con = get_covid_
 }
 get_db_error_report_by_case_error_Residency_canadian_but_not<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
-    filter(Residency == "Canadian resident" & !(ResidenceCountry == "CANADA")) %>% 
+    filter(Residency == "Canadian resident" & !(str_to_lower( ResidenceCountry )==str_to_lower("CANADA"))) %>% 
     select(PHACID) %>% 
     mutate(err = "Residency is Canadian, yet ResidenceCountry is not.")%>% collect() %>% 
     mutate(typ = "Residency" )
@@ -1477,6 +1477,8 @@ get_db_error_report_by_case_close<- function(con = get_covid_cases_db_con(), a_t
 
 
 get_db_error_report_by_case_Dead_and_alive<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
+  #' Returns error report related to cases both dead and alive
+  #' 
   a_tbl %>% 
     filter( (! is.na(DeathDate)) &  (! is.na(RecoveryDate)) ) %>% 
     select(PHACID, DeathDate, RecoveryDate) %>% 
