@@ -51,40 +51,88 @@ get_db_counts <- function(con = get_covid_cases_db_con(),
   
 }
 
-
-
-
-
+#a_tbl$Disposition
+#dt_col = "ReportedDate"
+#col_col_nm = "Hosp"
+#col_col_nm = "AgeGroup10"
+#col_col_nm = "Asymptomatic"
+#col_col_nm = "Ethnicity"
+#a_tbl <- a_tbl %>% filter(PT != "QC")
+#a_tbl <- a_tbl %>% mutate(AgeGroup10 = as.ordered(AgeGroup10))
+#COL_NM = c("COVIDDeath","SymShortnessofBreath","Asymptomatic", "Indigenous", "Hosp", "ICU")
 plot_epi_curve <- function(con = get_covid_cases_db_con(), 
                            a_tbl = get_flat_case_tbl(con = con),
                            classifications_allowed = c("Probable", "Confirmed"),
                            dt_col = "OnsetDate",
                            col_col_nm = "EXPOSURE_CAT",
+                           facet_col_nm = "PT",
                            clr = "blue",
                            early_dt =Sys.Date() %m-% months(6),
                            rolling_average = 7,
-                           fog_days = 14
+                           fog_days = 14,
+                           Percent_fill = F,
+                           MIN_LUMP_PROP = 0.02
 )
 {
   #' returng ggPlot object of the epi curve with a rolling average, it is also generally segmented by a column
   
   ln_lbl <- paste0("Rolling Average (", rolling_average, " days)")
-  y_lbl <- "Number of new cases"
+  y_lbl <- if(Percent_fill) "Percent of cases and normalized Count" else "Number of new cases"
 
+  #a_tbl %>% count(PT)
   
+  foggy <- 
+  a_tbl %>% 
+    rename(facet_col := facet_col_nm) %>% 
+    mutate(facet_col = fct_lump_prop(facet_col , prop = MIN_LUMP_PROP)) %>% 
+    group_by(facet_col) %>% 
+    summarise(base_fog = max(PHACReportedDate, na.rm = T)) %>% 
+    # {if(facet_col_nm == "PHACReportedDate") base_fog 
+    #   else if (facet_col_nm == "ReportedDate") base_fog - 3
+    #   
+    #   }
+    # {if(facet_col_nm == "PHACReportedDate") base_fog}
+    group_by(facet_col) %>% 
+    mutate(real_fog = as.Date(ifelse(dt_col == "PHACReportedDate", base_fog ,
+           ifelse(dt_col == "ReportedDate", base_fog - 3 , 
+           ifelse(dt_col == "OnsetDate",base_fog - 14, base_fog - 14
+           )))))
   
   df_p <- 
   a_tbl %>% 
     filter(Classification %in% classifications_allowed) %>% 
-    select(PHACID, dt_col, col_col_nm) %>%
-    rename(date := dt_col, col_col := col_col_nm) %>% #pull(date) %>% as.Date()
+    select(PHACID, dt_col, col_col_nm, facet_col_nm) %>%
+    rename(date := dt_col, col_col := col_col_nm, facet_col := facet_col_nm) %>% #pull(date) %>% as.Date()
+    filter(!is.na(date)) %>% 
+    mutate(facet_col = fct_lump_prop(facet_col , prop = MIN_LUMP_PROP)) %>% 
     mutate(date = as.Date(date)) %>% 
-    mutate(col_col = clean_str(x = col_col,NA_replace = "Unknown")) %>% #count(col_col) %>% pull(n) %>% sum()
-    count(date, col_col) %>% 
+    mutate(col_col = clean_str(x = col_col, BLANK_replace = "Unknown")) %>% #count(col_col) %>% pull(n) %>% sum()
+    count(date, col_col, facet_col) %>% 
+    
+    #filter(!is.na(col_col)) %>%
+    #filter(!is.na(facet_col)) %>%
     mutate(tot = sum(n)) %>% 
     group_by(col_col) %>% 
-    mutate(col_lbl = paste0(col_col, " (", format(100*sum(n)/ tot, digits = 2), "%)")) %>% 
+    mutate(col_percent = 100*sum(n)/ tot) %>% 
+    mutate(col_lbl = paste0(col_col, " (", format(col_percent, digits = 2), "%)")) %>% 
+    mutate(col_lbl = fct_reorder(col_lbl, col_percent)) %>% 
+    ungroup() %>%
+    group_by(facet_col) %>%
+    mutate(facet_percent = 100*sum(n)/ tot) %>% 
+    mutate(facet_max = max(n)) %>% 
+    mutate(facet_total = sum(n)) %>% 
+    mutate(facet_lbl = paste0(facet_col, "\n", 
+                              format(facet_percent , digits = 2),
+                              "%\nPeak:",format(facet_max , big.mark = ","),
+                              "\nTotal:",format(facet_total, big.mark = ","))) %>% 
+    mutate(facet_lbl = fct_reorder(facet_lbl, facet_percent)) %>% 
+    
+    ungroup() %>% 
+    #mutate(col_col = clean_str(col_col, BLANK_replace = "Unknown")) 
     arrange(date) 
+  
+  
+  
   
   #%>% # pull(n) %>% sum()
     #group_by(ID) %>% 
@@ -94,14 +142,52 @@ plot_epi_curve <- function(con = get_covid_cases_db_con(),
     # mutate(ln_lbl = ln_lbl,
     #        bar_lbl = "n")
     # 
+
   
+  
+    
   df_pl <- 
     df_p %>% 
-    group_by(date) %>% 
+    filter(! is.na(date)) %>% 
+    group_by(date, facet_lbl) %>% 
     summarise(n = sum(n)) %>% 
+    ungroup() %>% 
+    group_by(facet_lbl) %>% 
     arrange(date) %>% 
-    mutate(roll_mean = rollmean(n, rolling_average, na.pad = T, align = "right")) 
+    #mutate(roll_mean=fnrollmean(n))
+    mutate(roll_mean = rollmean(n, rolling_average, na.pad = T, align = "right")) %>%
+    mutate(graph_type = "Numbers") %>% 
+    ungroup()
+  #df_pl$roll_mean
+  #df_pl %>% view()
+  df_pl <- 
+  if(Percent_fill){
+    df_pl %>% 
+      group_by(facet_lbl) %>% 
+      mutate(roll_mean_max =  max(roll_mean, na.rm = T)) %>%
+      mutate(n_max =  max(n, na.rm = T)) %>%
+      ungroup() %>%
+      mutate(roll_mean = roll_mean/roll_mean_max)%>%
+      mutate(n = n/n_max)# %>% group_by(facet_lbl) %>% slice(which.max(roll_mean)) 
+  }else{
+    df_pl
+  }
   
+  #df_pl  %>% group_by(facet_lbl) %>% slice(which.max(roll_mean)) 
+  #df_pl  %>% group_by(facet_lbl) %>% count(date, sort = T)
+  
+  df_p <-
+    if(Percent_fill){
+      df_p %>% 
+        group_by(date, facet_lbl) %>% 
+        mutate(n_t =  sum(n)) %>%
+        ungroup() %>%
+        mutate(n = n/n_t)
+    }else{
+      df_p
+    }
+
+  df_p <- df_p %>%     mutate(graph_type = "Fraction")  
   
   df_p <- df_p %>% filter(date >= early_dt) 
   df_pl <- df_pl %>% filter(date >= early_dt) 
@@ -110,28 +196,84 @@ plot_epi_curve <- function(con = get_covid_cases_db_con(),
   sub_ttl_lbl <- paste0(min(df_p$date), " to ",  max(df_p$date))
   
   
-  df_ribbon <- tibble(date = seq(from = Sys.Date() %m-% days(fog_days), to = Sys.Date(), by = 1),
-         ymin = 0, ymax_A= max(df_pl$n)
-  )
+  max_dt <- df_pl$date %>% max(na.rm = T)
   
   
+    
+  df_ribbon <- 
+  foggy %>% filter(!is.na(facet_col)) %>% pull(facet_col) %>% 
+  lapply(., function(curr_facet){
+    foggy %>% filter(facet_col == curr_facet) %>% pull(real_fog) %>%
+    seq(., max_dt, by = 1) %>% as_tibble() %>% mutate(facet_col = curr_facet)
+  }) %>% bind_rows() %>% inner_join(
+    df_p %>% group_by(date, facet_col) %>% 
+      summarise(sum_n = sum(n, na.rm = T) ) %>% 
+      group_by(facet_col) %>%
+      summarise(max_n = max(sum_n, na.rm = T)), 
+    by = "facet_col"
+  ) %>% mutate(ymin = 0, graph_type = "Numbers") %>% 
+    rename( ymax_A := max_n) %>% 
+    rename(date := value) %>%
+    inner_join(df_p %>% select(facet_col, facet_lbl), by = "facet_col")
+  
+  
+  #df_ribbon %>% group_by(facet_col)
+  
+  # df_pl %>%   #   ungroup() %>% 
+  #   mutate(max_date = max(date, na.rm = T)) %>% 
+  #   distinct(facet_lbl, max_date) %>%
+  #   inner_join(foggy, by = "facet_col") %>% select( facet_col, max_date, real_fog) 
+    
+    #group_by(facet_col) %>% 
+    #mutate(seq(real_fog, max_date, by = 1))
+   # pivot_longer(2:3) %>% 
+    #group_by(facet_col) %>% 
+
+    #expand(facet_col, a = full_seq(value, 1)) %>% group_by(facet_col) %>% summarise(min(a))
+  
+  # df_ribbon <- tibble(date = seq(from = Sys.Date() %m-% days(fog_days), to = Sys.Date(), by = 1),
+  #        ymin = 0, ymax_A= max(df_pl$n), graph_type = "Numbers"
+  # )
+  
+  
+  if (grepl("AgeGroup", col_col_nm)){
+    df_p$col_col <- as.ordered(df_p$col_col) 
+  }
+  #ffffe5
+  #f7fcb9
+  #d9f0a3
+  #addd8e
+  #78c679
+  #41ab5d
+  #238443
+  #006837
+  #004529
+  #plot(df_p$date)
+  #df_p %>% count(PT)
+  #df_pl %>% count(PT)
   df_p %>% #filter(date >= early_dt) %>% 
     ggplot(aes(x = date, y = n)) +
-    geom_ribbon(data = df_ribbon, mapping = aes(x = date, ymin = 0, ymax = ymax_A), inherit.aes = F, fill = "grey", alpha = 0.5) + 
+    geom_ribbon(data = df_ribbon, mapping = aes(x = date, ymin = 0, ymax = ymax_A), inherit.aes = F, fill = "grey", alpha = 0.5)  +
     geom_col(mapping = aes(fill = col_lbl), alpha = 0.5) +
-    geom_line(data = df_pl, mapping = aes(y = roll_mean, color = "movingAvg"), size = 1.5, linetype = "solid") +
+    geom_line(data = df_pl, mapping = aes(y = roll_mean, color = "movingAvg"), size = 1.5, linetype = "solid")  +
     scale_x_date(limits = c(early_dt, NA), date_breaks = "2 weeks", date_labels = "%d %b") + 
-    scale_y_continuous(limits = c(0, max(df_pl$n)) ,labels = comma) +
+    #scale_y_continuous(labels = comma) +
     scale_colour_manual(labels = c(ln_lbl), 
-                        values=c("movingAvg" = "black"))+
-     # scale_fill_manual(labels = c(bar_lbl), 
-     #                     values=c("numberday" = clr))+
+                        values=c("movingAvg" = "black")) +
+    #{if(  Percent_fill) facet_grid(vars(graph_type), scales = "free_y") }+
+    #scale_colour_brewer() +
+    #scale_fill_discrete(brewer.pal(11, "Set3"))+
+    {if(grepl("AgeGroup", col_col_nm)) scale_fill_brewer(palette = "YlGn")} +
+    facet_grid(rows = vars(facet_lbl), scales = "free_y") +
     #guides(fill = T) +
-    labs(title = ttl_lbl, subtitle = sub_ttl_lbl, caption = paste0("generated on ", Sys.Date()),
+    labs(title = ttl_lbl, 
+         subtitle = sub_ttl_lbl, 
+         caption = paste0("generated on ", Sys.Date()),
          y = y_lbl, 
          x = get_lbl(dt_col),
          fill = get_lbl(col_col_nm),
-         color = "") #+
+         color = "") 
+    
     # theme(legend.key=element_blank(),
     #       legend.title=element_blank()) 
       #theme(legend.position = c(0.7, 0.9))
@@ -169,10 +311,54 @@ extract_single_epi_curve <- function(dt_col,
 }
 
 
+
+extract_single_percent_by_time <- function(dt_col, 
+                                     col_col_nm, 
+                                     ..., 
+                                     width = 10, 
+                                     height = 7, 
+                                     units = "in",
+                                     target_dir = get_generic_report_dir("percent_by_time")
+){
+  
+  
+  
+  p <- plot_epi_curve(dt_col = dt_col, col_col_nm = col_col_nm, ...)
+  
+  fn = paste0("percent_by_time_", Sys.Date(), "_", dt_col, "_", col_col_nm, ".svg")
+  
+  
+  if ( ! dir.exists(target_dir)){
+    dir.create(target_dir, recursive = T)
+  }
+  
+  
+  ggsave(file=file.path(target_dir, fn), 
+         plot=p, 
+         width= width, 
+         height= height,
+         units  = units)
+}
+
+
+
+
+
 extract_epi_curves <- function(report_filter= "epi_curves", 
                                target_dir = get_generic_report_dir("epi_curves"), 
-                               dt_col = c("OnsetDate", "ReportedDate"), 
-                               col_col_nm = c("EXPOSURE_CAT", "AgeGroup20", "Asymptomatic", "Indigenous", "Hosp", "ICU", "PT")){
+                               dt_col = c(#"OnsetDate", 
+                                 "ReportedDate"), 
+                               col_col_nm = c("Disposition",
+                                              "Ethnicity", 
+                                              "EXPOSURE_CAT", 
+                                              "Asymptomatic", 
+                                              "AgeGroup20", 
+                                              #"AgeGroup10", 
+                                              #"Indigenous", 
+                                              "Hosp"#, 
+                                              #"ICU", 
+                                              #"PT"
+                                              )){
   
   if(!get_export_should_write(report_filter= report_filter)){
     print(paste0("Not wrting '",report_filter,"' today."))
@@ -184,13 +370,53 @@ extract_epi_curves <- function(report_filter= "epi_curves",
   if ( ! dir.exists(target_dir)){
     dir.create(target_dir, recursive = T)
   }
-  
-  
+
   expand.grid(dt_col = dt_col, col_col_nm = col_col_nm) %>% as_tibble() %>%
     pmap_dfr(function(...) {
       current <- tibble(...)
       
       extract_single_epi_curve(dt_col = current$dt_col, col_col_nm =  current$col_col_nm)
+      
+    }) 
+  
+}
+
+
+
+
+
+
+extract_percent_by_time <- function(report_filter= "percent_by_time", 
+                               target_dir = get_generic_report_dir("percent_by_time"), 
+                               dt_col = c(#"OnsetDate", 
+                                          "ReportedDate"), 
+                               col_col_nm = c("Disposition", 
+                                              "Ethnicity", 
+                                              "EXPOSURE_CAT", 
+                                              "AgeGroup20", 
+                                              #"AgeGroup10", 
+                                              "Asymptomatic", 
+                                              #"Indigenous", 
+                                              "Hosp"#, 
+                                              #"ICU", 
+                                              #"PT"
+                                              )){
+  
+  if(!get_export_should_write(report_filter= report_filter)){
+    print(paste0("Not wrting '",report_filter,"' today."))
+    return(NULL)
+  }else{
+    print(paste0("Now wrting '",report_filter,"' to '", target_dir , "'"))
+  }
+  
+  if ( ! dir.exists(target_dir)){
+    dir.create(target_dir, recursive = T)
+  }
+  expand.grid(dt_col = dt_col, col_col_nm = col_col_nm) %>% as_tibble() %>%
+    pmap_dfr(function(...) {
+      current <- tibble(...)
+      
+      extract_single_percent_by_time(dt_col = current$dt_col, col_col_nm =  current$col_col_nm, Percent_fill = T)
       
     }) 
   
@@ -471,8 +697,15 @@ extract_single_positives_by_age_prov <- function(
 extract_positives_by_age_prov <- function(report_filter= "by_age_prov", 
                                target_dir = get_generic_report_dir(report_filter), 
                                agegrp = c("AgeGroup20", "AgeGroup10"), 
-                               NA_replace = c("No","","", "", "", ""),
-                               COL_NM = c("COVIDDeath","SymShortnessofBreath","Asymptomatic", "Indigenous", "Hosp", "ICU")){
+                               NA_replace = c("No","","", ""),
+                               COL_NM = c(#"Disposition", 
+                                          #"Ethnicity", 
+                                          "COVIDDeath",
+                                          #"SymShortnessofBreath",
+                                          "Asymptomatic", 
+                                          #"Indigenous", 
+                                          "Hosp", 
+                                          "ICU")){
 
   if(!get_export_should_write(report_filter= report_filter)){
     print(paste0("Not wrting '",report_filter,"' today."))
@@ -497,4 +730,36 @@ extract_positives_by_age_prov <- function(report_filter= "by_age_prov",
   
 }
 
+# 
+# plot_survival_curve <- function(con = get_covid_cases_db_con(),
+#                            a_tbl = get_flat_case_tbl(con = con),
+#                            classifications_allowed = c("Probable", "Confirmed"),
+#                            dt_col = "OnsetDate",
+#                            col_col_nm = "EXPOSURE_CAT",
+#                            facet_col_nm = "PT",
+#                            early_dt =Sys.Date() %m-% months(6),
+#                            rolling_average = 7,
+#                            fog_days = 14,
+#                            Percent_fill = F,
+#                            MIN_LUMP_PROP = 0.02
+# ){
+# 
+# 
+#   a_tbl %>% filter(Classification %in% classifications_allowed) %>%
+#     select(PT, OnsetDate, Disposition, COVIDDeath, DeathDate, RecoveryDate, AgeGroup20, AgeGroup10, Age) %>%
+#     mutate(Disposition = clean_str(Disposition, BLANK_replace = "Ill")) %>%
+#     mutate(RecoveryDate = as.Date(ifelse(Disposition == "Recovered", RecoveryDate, NA))) %>%
+#     mutate(DeathDate = as.Date(ifelse(Disposition == "Deceased", DeathDate, NA))) %>%
+#     mutate(has_OnsetDate = is.na(OnsetDate),
+#            has_DeathDate =  is.na(DeathDate),
+#            has_RecoveryDate=  is.na(RecoveryDate)) %>%
+#     count(PT, Disposition, has_OnsetDate, has_DeathDate, has_RecoveryDate)
+#     pivot_longer(cols = )
+# 
+# 
+#     library(cmprsk)
+# 
+# }
+# cmprskQ::
+# cmprskQR::
 
