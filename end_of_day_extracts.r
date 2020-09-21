@@ -471,9 +471,10 @@ get_HCDaily_dir <- function(report_filter = "HCDaily",
 get_export_should_write <- function(report_filter, 
                             ...){
 
-  get_reports_dir_locations(...) %>% 
+  get_reports_dir_locations() %>% 
     filter(report == report_filter) %>% 
     pivot_longer(., colnames(.)) %>% 
+    mutate(value = clean_str(value)) %>% 
     filter(name == as.character( lubridate::wday(Sys.Date(), label = T))) %>%
     pull(value) %>% 
     trimws() %>% nchar() > 0
@@ -1750,7 +1751,7 @@ extract_case_data_get_WHO <- function(){
                        fn = path.expand( file.path(get_report_dir("WHO"), 
                                                    paste0("Canada_COVID19_WHO_linelist-", format(Sys.Date() ,"%d%B%Y"),".xlsx")#, "_SEMI_AUTOMATED.xlsx")
                        )),
-                       report_filter = "WHO",
+                       report_filter = "WHO"
   )
   
 }
@@ -1762,7 +1763,7 @@ extract_case_data_get_ijn <- function(){
                        fn = path.expand( file.path(get_report_dir("ijn"), 
                                                    paste0("IJN_Daily updt_", format(Sys.Date() ,"%b%d"), "_pm.xlsx")
                        )),
-                       report_filter = "ijn",
+                       report_filter = "ijn"
   )
   
 }
