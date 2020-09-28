@@ -50,6 +50,11 @@ END_OF_DAY_REPORT_INPUT = "end_of_day_reports_input.xlsx"
 
 YES_STR = "YES"
 NO_STR = "NO"
+Y_STR = "Y"
+N_STR = "N"
+NA_STR = "NA"
+DO_NOT_STR = "DO NOT"
+
 UNKNOWN_STR = "UNKNOWN"
 #BLANK_VALUE_STR = "BLANK"
 BLANK_VALUE_STR = ""
@@ -187,6 +192,11 @@ clean_yes_no <- function(x,
   #' @param x a vector
   #' @param error_replace a vector
   #' @param x a vector
+  
+  
+  x %>% clean_str() %>% recode(Y = YES_STR,
+                               N = NO_STR)
+  
   clean_Categorical(x = x, 
                     other_replace = other_replace,
                     bad_value_replace = bad_value_replace,
@@ -260,36 +270,51 @@ clean_str_b <- function(x,
 ########################################
 # 
 clean_str <- function(x, 
+                      do_pattern = T,
                       pattern = "[[:punct:]]", 
                       replacement = " ", 
                       NA_replace = "", 
                       BLANK_replace = "",
-                      capitalize_function = str_to_title){
+                      capitalize_function = str_to_title,
+                      do_NA_string_replace = T){
   #' By default this replactes all punctuation, and trims spaces so there is only one
   #' then sets title case
   #' 
-  x %>% str_replace_all(pattern = pattern, replacement = replacement) %>%
+  x %>% 
+    {if (do_pattern)str_replace_all(string = . , pattern = pattern, replacement = replacement) else .} %>%
     str_replace_all(pattern = "[ ]+", replacement = " ") %>%
-    ifelse(is.na(.), NA_replace, .) %>% 
-    #str_to_lower() %>% 
     capitalize_function() %>% 
+    ifelse(is.na(.), NA_replace, .) %>% 
+    {if(do_NA_string_replace) ifelse(. == NA_STR , NA_replace, .) else .} %>%
+    #str_to_lower() %>% 
     trimws() %>%  #%>% table()
-    ifelse(. == "", BLANK_replace, .) 
+    ifelse(. == "", BLANK_replace, .) %>% 
+    capitalize_function() 
 }
 
 
-clean_st_CONSTANTS <- function(){
-  YES_STR <<- clean_str(YES_STR)
-  NO_STR<<- clean_str(NO_STR)
-  UNKNOWN_STR<<- clean_str(UNKNOWN_STR)
-  BLANK_VALUE_STR<<- clean_str(BLANK_VALUE_STR) 
-  NOT_STATED_STR<<- clean_str(NOT_STATED_STR)
-}
-clean_st_CONSTANTS()
-
-
-
+clean_st_CONSTANTS <- function(...){
+  #'
+  #'
+  #'
   
+  YES_STR <<- clean_str(YES_STR , ...)
+  NO_STR<<- clean_str(NO_STR , ...)
+  UNKNOWN_STR<<- clean_str(UNKNOWN_STR , ...)
+  BLANK_VALUE_STR<<- clean_str(BLANK_VALUE_STR , ...) 
+  NOT_STATED_STR<<- clean_str(NOT_STATED_STR , ...)
+  Y_STR<<- clean_str(Y_STR , ...)
+  N_STR<<- clean_str(N_STR , ...)
+  NA_STR<<- clean_str(NA_STR , ...)
+  DO_NOT_STR<<- clean_str(DO_NOT_STR , ...)
+  
+}
+
+########################
+# Run this to ensure that the constants all have the correct caseing
+clean_st_CONSTANTS(capitalize_function = str_to_title)
+
+
   
 ########################################
 #  
@@ -440,36 +465,55 @@ get_cols_2_clean <- function(in_dir = DIR_OF_INPUT,
   #' Return a table of report name and directories to put the report into 
   #'
   #'
-  #return(rio::import(file.path(in_dir, fn), setclass = "tibble"))
+  #
   readxl::read_xlsx(file.path(in_dir, fn), sheet = "input") %>% 
     filter(report == report_filter) %>% 
     mutate(clean_str = clean_yes_no(clean_str)) %>% 
     filter(clean_str == YES_STR) %>%
     pull(col_nm)
 }
+str_to_upper
 
-
-
-
-
-get_HCDaily_cols <- function(report_filter = "HCDaily", 
-                             ...){
-  #' Return Columns needed for the 'HCDaily' report 
+str_to_same <- function(x){
   #'
   #'
-  get_reports_column_list(...) %>% 
-    filter(report == report_filter) %>% pull(col_nm)
+  x  
 }
-get_HCDaily_dir <- function(report_filter = "HCDaily", 
-                            ...){
-  #' Return directory needed for the 'HCDaily' report 
+
+
+
+get_cols_cleaning <- function(in_dir = DIR_OF_INPUT, 
+                             fn = END_OF_DAY_REPORT_INPUT, 
+                             report_filter
+){
+  #' Return a table of report name and directories to put the report into 
   #'
   #'
-  get_reports_dir_locations(...) %>% 
-    filter(report == report_filter) %>% pull(dir)
+  #
+  readxl::read_xlsx(file.path(in_dir, fn), sheet = "input", col_types = "text") %>% 
+    filter(report == report_filter) %>% 
+    mutate_at(c("clean_it","punct_replace", "na_blank_replace", "case_standard"), function(x){if_else(is.na(x), "", x)}) %>%
+    mutate(clean_it = trimws(str_to_title(clean_it))) %>% 
+    mutate(na_blank_replace = trimws(na_blank_replace)) %>% 
+    mutate(case_standard = trimws(case_standard)) %>% 
+    mutate(punct_replace = trimws(punct_replace)) 
+    
+    
+              #clean_it)#, 
+              #do_pattern = FALSE, 
+              #capitalize_function  = str_to_same)
 }
+
+
+
+
+
+
 get_export_should_write <- function(report_filter, 
                             ...){
+  #' Returns true if we should write the extract today
+  #' False if we shouldn't
+  #' 
 
   get_reports_dir_locations() %>% 
     filter(report == report_filter) %>% 
@@ -482,43 +526,8 @@ get_export_should_write <- function(report_filter,
 }
 
 
-get_StatsCan_cols <- function(report_filter = "STATCAN", 
-                              ...){
-  #' Return Columns needed for the 'STATCAN' report 
-  #'
-  #'
-  get_reports_column_list(...) %>% 
-    filter(report == report_filter) %>% pull(col_nm)
-}
-get_StatsCan_dir <- function(report_filter = "STATCAN", 
-                            ...){
-  #' Return directory needed for the 'STATCAN' report 
-  #'
-  #'
-  get_reports_dir_locations(...) %>% 
-    filter(report == report_filter) %>% pull(dir)
-}
 
 
-
-
-
-get_WHO_cols <- function(report_filter = "WHO", 
-                         ...){
-  #' Return Columns needed for the 'WHO' report 
-  #'
-  #'
-  get_reports_column_list(...) %>% 
-    filter(report == report_filter) %>% pull(col_nm)
-}
-#' get_WHO_dir <- function(report_filter = "WHO", 
-#'                             ...){
-#'   #' Return directory needed for the 'WHO' report 
-#'   #'
-#'   #'
-#'   get_reports_dir_locations(...) %>% 
-#'     filter(report == report_filter) %>% pull(dir)
-#' }
 
 get_report_cols <- function(report_filter, 
                          ...){
@@ -527,6 +536,16 @@ get_report_cols <- function(report_filter,
   #'
   get_reports_column_list(...) %>% 
     filter(report == report_filter) %>% pull(col_nm)
+}
+
+
+get_report_dir_copy <- function(report_filter, ...){
+  #' Return director of the  report 
+  #'
+  #'
+  
+  get_reports_dir_locations(...) %>% 
+    filter(report == report_filter) %>% pull(CopyLocation)
 }
 
 get_report_dir <- function(report_filter, ...){
@@ -955,22 +974,72 @@ make_exposure_cat2 <- function(df){
 make_final_clean_df <- function(df, 
                                 report_filter, 
                                 cols,
-                                cols_2_clean = get_cols_2_clean(report_filter = report_filter)
+                                #cols_2_clean = get_cols_2_clean(report_filter = report_filter),
+                                cleaning_instructions = get_cols_cleaning(report_filter = report_filter)
 ){
   #' Cleans a DF before returning it
+  #df <- get_db_tbl(con = con, tlb_nm = "qry_allcases_with_Intl_Travel_Exposure")
   
   
-  df_cleaned <- 
+  
+  # Get clean Cols  
+  cols2clean <- 
     df %>% 
     select_if(.predicate = is.character) %>% 
-    select(any_of(cols_2_clean)) %>% 
-    mutate_all(clean_str)
+    select(any_of(cleaning_instructions %>% filter (clean_it == YES_STR) %>% pull(col_nm))) %>%  
+    colnames()
+    
+   
+  df_cleaned <- 
+    map_dfc(cols2clean , function(col){
+
+    clean_col_inst <- cleaning_instructions %>% filter(col_nm == col) %>% slice(1)
+      df[[col]] %>%
+        {if (clean_col_inst$punct_replace == DO_NOT_STR) . else gsub("[[:punct:]]", clean_col_inst$punct_replace, .)} %>%
+        ifelse(. == "", clean_col_inst$na_blank_replace, .) %>%
+        ifelse(is.na(.), clean_col_inst$na_blank_replace, .) %>%
+        str_replace_all(pattern = "[ ]+", replacement = " ") %>%
+        {if (length(clean_col_inst$case_standard) > 1) get(clean_col_inst$case_standard)(.) else . } %>%
+        trimws()
+  })
+  colnames(df_cleaned) <- cols2clean
+  # df_cleaned <- 
+  # df %>% 
+  #   select_if(.predicate = is.character) %>% 
+  #   select(any_of(cleaning_instructions %>% filter (clean_str == YES_STR) %>% pull(col_nm))) %>% 
+  #   mutate_all(function(x, clean_col_inst){
+  #     print(names(x))
+  #     print(head(x))
+  #     return(.)
+  #     # x %>% 
+  #     #   {if (clean_col_inst$punct_replace == DO_NOT_STR) . else gsub("[[:punct:]]", clean_col_inst$punct_replace, .)} %>%
+  #     #   ifelse(. == "", clean_col_inst$na_blank_replace, .) %>%
+  #     #   ifelse(is.na(.), clean_col_inst$na_blank_replace, .) %>%
+  #     #   str_replace_all(pattern = "[ ]+", replacement = " ") %>%
+  #     #   {if (length(clean_col_inst$case_standard) > 1) get(clean_col_inst$case_standard)(.) else . }
+  #   }   )
+  
+
+  
   
   df[!colnames(df) %in% colnames(df_cleaned)] %>%
-    bind_cols(., df_cleaned) %>%
+    {if(ncol(df_cleaned) > 0) bind_cols(., df_cleaned) else .} %>%
     select(cols) %>% 
-    mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date)# %>%
-    #mutate_if(is.Date, format, OUTPUT_DATE_FORMAT)
+    mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date)# %>%  
+  
+  # 
+  # get_cols_cleaning
+  # df_cleaned <- 
+  #   df %>% 
+  #   select_if(.predicate = is.character) %>% 
+  #   select(any_of(cols_2_clean)) %>% 
+  #   mutate_all(clean_str)
+  
+  # df[!colnames(df) %in% colnames(df_cleaned)] %>%
+  #   bind_cols(., df_cleaned) %>%
+  #   select(cols) %>% 
+  #   mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date)# %>%
+  #   #mutate_if(is.Date, format, OUTPUT_DATE_FORMAT)
   
   
   
@@ -1023,6 +1092,75 @@ get_ijn <- function(con = get_covid_cases_db_con(),
     select(PHACReportedDate	,PT	,PTCaseID,	PHACID,	EpisodeDate	,EpisodeType	,Age	,Gender	,Residency	,LOCATION,	LabSpecimenCollectionDate1,	matches("^Travel.*"), EXPOSURE_CAT,	Classification)
 
 }
+
+
+get_values_count_summary <- function(con = get_covid_cases_db_con(),
+                                     a_tbl = get_case_data_domestic_epi(con = con)
+                                       # 
+                                       # get_flat_case_tbl(con = con) %>% 
+                                       # filter(Classification %in% c("Confirmed", "Probable"))
+                                    ){
+  
+  a_tbl_mn <- 
+    a_tbl %>% 
+    select(matches("Date")) %>%
+    select_if(is.Date) %>%
+    mutate_all(lubridate::month) %>% 
+    rename_all(paste0, "_month")
+  
+  a_tbl_wk <- 
+    a_tbl %>% 
+    select(matches("Date")) %>%
+    select_if(is.Date) %>%
+    mutate_all(lubridate::week) %>% 
+    rename_all(paste0, "_week")
+  
+  a_tbl_dow <- 
+    a_tbl %>% 
+    select(matches("Date")) %>%
+    select_if(is.Date) %>%
+    mutate_all(lubridate::wday) %>% 
+    rename_all(paste0, "_dow")
+  
+  
+  new_tbl <- bind_cols( a_tbl %>% select(! matches("Date")) , a_tbl_mn, a_tbl_wk, a_tbl_dow) 
+  
+  cnms <- colnames(new_tbl)
+  cnms <- cnms[ ! cnms %in% c("PT", "PHACID", "PTCaseID", "comments")]
+  cnms <- cnms[ ! cnms  %in% c("PT", "PHACID")]
+  cnms <- cnms[ ! grepl(pattern = "Spec$", x = cnms)]
+  cnms <- cnms[ ! grepl(pattern = "comment", x = cnms)]
+  
+  
+  ret_val <- 
+    lapply(cnms,function(cnm){
+      uvals <- new_tbl %>% #count(!!sym(cnm))
+        mutate(value = clean_str(!!sym(cnm), BLANK_replace = "NULL or BLANK STRING", NA_replace = "NULL or BLANK STRING")) %>% 
+        count(value, PT)
+      
+      
+      uvals <- 
+        if(length(uvals$value %>% unique()) > 20){
+          return(NULL)
+          # uvals <- uvals %>% arrange(desc(n)) %>% group_by(PT) %>%  
+          #   do(head(., n = 9))
+          # uvals
+        }else{uvals}
+      uvals %>% 
+        mutate(name = cnm,
+               value = as.character(value)) %>%
+        return()
+    }) %>% bind_rows()
+  
+  
+  
+  ret_wide <- 
+    ret_val %>% pivot_wider(names_from = PT, values_from = n, values_fill  = 0) %>% 
+    mutate(. , Canada = rowSums(.[3:ncol(.)])) 
+  return(ret_wide)
+
+}
+
 
 
 
@@ -1129,7 +1267,11 @@ get_completness_analysis <- function(con = get_covid_cases_db_con(),
 {
   df2 <- 
     df %>% 
-    make_final_clean_df(., report_filter = "QWER",  cols = colnames(.), cols_2_clean = colnames(.))
+    make_final_clean_df(., report_filter = "Completness",  
+                        cols = colnames(.)#, 
+                        #cols_2_clean = colnames(.)
+                        #cleaning_instructions = get_cols_cleaning(report_filter = "Completness")
+                        )
     
   
   df2_Deceased <- df2 %>% filter (Disposition == "Deceased")
@@ -1674,6 +1816,24 @@ extract_table_report <- function(df_fun, fn, report_filter, password = NULL, ...
   
   toc <- Sys.time()
   print(paste0("took ", format(toc - tic), " to write data"))
+  
+  
+  new_Loc <- get_report_dir_copy(report_filter = report_filter)
+  
+  if (! is.na(new_Loc)){
+    target_fn = file.path(new_Loc, basename(fn) )
+    
+    if ( ! dir.exists(new_Loc)){
+      dir.create(new_Loc, recursive = T)
+    }
+    
+    
+    print(paste0("Now I am copying over the report to the new location: '",new_Loc,"'", Sys.time()))
+    file.copy(fn, target_fn, overwrite = TRUE, recursive = FALSE,
+              copy.mode = TRUE, copy.date = TRUE)
+    
+  }
+
 }
 
 
@@ -1720,15 +1880,7 @@ extract_case_data_get_HCDaily <- function(){
                        report_filter = "HCDaily"
   )
   
-  
-  target_fn = file.path("//Ncr-a-phacc1s/phacc1/HPOC/Active Events/001-20 COVID-19/Dashboard",fn )
 
-  
-  print(paste0("Now I am copying over the HC report to the new location: on 'L:' Drive current time is ", Sys.time()))
-  file.copy(full_fn, target_fn, overwrite = FALSE, recursive = FALSE,
-            copy.mode = TRUE, copy.date = TRUE)
-  
-  
 }
 
 
@@ -1755,6 +1907,20 @@ extract_case_data_get_WHO <- function(){
   )
   
 }
+
+
+
+extract_case_data_Count_Summary <- function(){
+  extract_table_report(df_fun = get_values_count_summary, 
+                       fn = path.expand( file.path(get_report_dir("CountSummary"), 
+                                                   paste0("CountSummary_", format(Sys.Date() ,"%Y-%m-%d"),".xlsx")#, "_SEMI_AUTOMATED.xlsx")
+                       )),
+                       report_filter = "CountSummary"
+  )
+  
+}
+
+
 
 
 extract_case_data_get_ijn <- function(){
@@ -1855,6 +2021,7 @@ do_end_of_day_tasks <- function(){
   extract_case_data_get_HCDaily()
   extract_case_data_get_completness_analysis()
   extract_case_data_get_WHO()
+  extract_case_data_Count_Summary
   #extract_positives_by_age_prov()
   extract_case_data_get_ijn()
   #extract_epi_curves()
