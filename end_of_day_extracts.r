@@ -1126,9 +1126,9 @@ get_values_count_summary <- function(con = get_covid_cases_db_con(),
   new_tbl <- bind_cols( a_tbl %>% select(! matches("Date")) , a_tbl_mn, a_tbl_wk, a_tbl_dow) 
   
   cnms <- colnames(new_tbl)
-  cnms <- cnms[ ! cnms %in% c("PT", "PHACID", "PTCaseID", "comments")]
-  cnms <- cnms[ ! cnms  %in% c("PT", "PHACID")]
-  cnms <- cnms[ ! grepl(pattern = "Spec$", x = cnms)]
+  cnms <- cnms[ ! cnms %in% c("pt", "phacid", "ptcaseid", "comments")]
+  cnms <- cnms[ ! cnms  %in% c("pt", "phacid")]
+  cnms <- cnms[ ! grepl(pattern = "spec$", x = cnms)]
   cnms <- cnms[ ! grepl(pattern = "comment", x = cnms)]
   
   
@@ -1136,7 +1136,7 @@ get_values_count_summary <- function(con = get_covid_cases_db_con(),
     lapply(cnms,function(cnm){
       uvals <- new_tbl %>% #count(!!sym(cnm))
         mutate(value = clean_str(!!sym(cnm), BLANK_replace = "NULL or BLANK STRING", NA_replace = "NULL or BLANK STRING")) %>% 
-        count(value, PT)
+        count(value, pt)
       
       
       uvals <- 
@@ -1155,7 +1155,7 @@ get_values_count_summary <- function(con = get_covid_cases_db_con(),
   
   
   ret_wide <- 
-    ret_val %>% pivot_wider(names_from = PT, values_from = n, values_fill  = 0) %>% 
+    ret_val %>% pivot_wider(names_from = pt, values_from = n, values_fill  = 0) %>% 
     mutate(. , Canada = rowSums(.[3:ncol(.)])) 
   return(ret_wide)
   
@@ -2013,7 +2013,7 @@ backup_db <- function(full_fn = file.path(DIR_OF_DB_2_BACK_UP, NAME_DB_2_BACK_UP
 
 
 do_end_of_day_tasks <- function(){
-  #backup_db()
+  backup_db()
   extract_case_db_errs()
   extract_case_data_get_StatsCan()
   extract_case_data_domestic_epi()
