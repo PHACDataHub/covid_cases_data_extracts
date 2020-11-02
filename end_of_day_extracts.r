@@ -19,6 +19,7 @@ library(docstring)
 library(writexl)
 library(readxl)
 library(lubridate)
+library(AzureStor)
 #library(RDCOMClient)
 
 source("make_graphs.r")
@@ -526,7 +527,11 @@ get_export_should_write <- function(report_filter,
 
 
 
-
+get_report_save_type <- function(report_filter, 
+                            ...){
+  get_reports_dir_locations(...) %>% 
+    filter(report == report_filter) %>% pull(type)
+}
 
 get_report_cols <- function(report_filter, 
                             ...){
@@ -817,30 +822,30 @@ make_EpisodeType <- function(df){
 }
 
 
-make_Gender_2 <- function(df){
-  #' return vector indicating gender after cleaning
+make_sex_2 <- function(df){
+  #' return vector indicating sex_2 after cleaning
   #'
   #' @param df must have all of the following columns "OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1"
   #'  
   df %>% 
-    select(Gender)  %>% 
-    mutate(Gender2 = clean_Categorical(Gender, good_vals = c("Female", "Male", "Other"), bad_value_replace = NOT_STATED_STR) ) %>% #count(Gender2)
+    select(sex)  %>% 
+    mutate(sex2 = clean_Categorical(sex, good_vals = c("Female", "Male", "Other"), bad_value_replace = NOT_STATED_STR) ) %>% #count(sex2)
     #clean_str() %>% 
-    pull(Gender2)
+    pull(sex2)
 }
 
 make_Occupation_2 <- function(df){
-  #' return vector indicating gender after cleaning
+  #' return vector indicating occupation_2 after cleaning
   #'
   #' @param df must have all of the following columns "Occupation_other"
   #'  
   #'  
   #'  
   df %>% 
-    select(Occupation_other)  %>% 
-    mutate(Occupation_Other = clean_str(Occupation_other)) %>% 
-    mutate(Occupation_Other2 = if_else(Occupation_other == "", NOT_STATED_STR, Occupation_other)) %>% #count(Occupation_Other2, sort = T) %>% 
-    pull(Occupation_Other2)
+    select(occupation_other)  %>% 
+    mutate(occupation_other = clean_str(occupation_other)) %>% 
+    mutate(occupation_other2 = if_else(occupation_other == "", NOT_STATED_STR, occupation_other)) %>% #count(Occupation_Other2, sort = T) %>% 
+    pull(occupation_other2)
 }
 
 
@@ -862,7 +867,7 @@ make_healthcare_worker_2 <- function(df){
 
 
 make_LTC_Resident_2 <- function(df){
-  #' return vector indicating gender after cleaning
+  #' return vector indicating LTC_resident_2 after cleaning
   #'
   #' @param df must have all of the following columns "OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1"
   #'  
@@ -877,7 +882,7 @@ make_LTC_Resident_2 <- function(df){
 }
 
 make_OnsetDate2 <- function(df){
-  #' return vector indicating gender after cleaning
+  #' return vector indicating onsetdate2 after cleaning
   #'
   #' @param df must have all of the following columns "OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1"
   #'  
@@ -1023,7 +1028,7 @@ make_final_clean_df <- function(df,
   
   df[!colnames(df) %in% colnames(df_cleaned)] %>%
     {if(ncol(df_cleaned) > 0) bind_cols(., df_cleaned) else .} %>%
-    select(cols) %>% 
+    #select(cols) %>% 
     mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) %>%  
     rename_all(str_to_lower)
   
@@ -1076,7 +1081,7 @@ get_ijn <- function(con = get_covid_cases_db_con(),
   df %>% 
     mutate(. , EpisodeDate = make_EpisodeDate(.)) %>% 
     mutate(. , EpisodeType = make_EpisodeType(.)) %>% 
-    select(PHACReportedDate	,PT	,PTCaseID,	PHACID,	EpisodeDate	,EpisodeType	,Age	,Gender	,Residency	,LOCATION,	LabSpecimenCollectionDate1,	matches("^Travel.*"),EXPOSURE_CAT,	Classification) %>% 
+    select(PHACReportedDate	,PT	,PTCaseID,	PHACID,	EpisodeDate	,EpisodeType	,Age	,sex	,Residency	,LOCATION,	LabSpecimenCollectionDate1,	matches("^Travel.*"),EXPOSURE_CAT,	Classification) %>% 
     #  filter(PHACID =="48-197101")
     filter(between(PHACReportedDate, Sys.Date()- 7 , Sys.Date()-1) | is.na(PHACReportedDate)) %>% 
     filter(EXPOSURE_CAT == "International travel") %>% 
@@ -1089,13 +1094,16 @@ get_ijn <- function(con = get_covid_cases_db_con(),
     filter(meet_travel_Date_condition) %>%
     filter(between(EpisodeDate,  Sys.Date()- 14, Sys.Date()+1))   %>% 
     select(- Travel, -TravelDateMissing, -meet_travel_Date_condition) %>% 
-    select(PHACReportedDate	,PT	,PTCaseID,	PHACID,	EpisodeDate	,EpisodeType	,Age	,Gender	,Residency	,LOCATION,	LabSpecimenCollectionDate1,	matches("^Travel.*"), EXPOSURE_CAT,	Classification)
+    select(PHACReportedDate	,PT	,PTCaseID,	PHACID,	EpisodeDate	,EpisodeType	,Age	,sex	,Residency	,LOCATION,	LabSpecimenCollectionDate1,	matches("^Travel.*"), EXPOSURE_CAT,	Classification)
   
 }
 
 
 get_values_count_summary <- function(con = get_covid_cases_db_con(),
-                                     a_tbl = get_case_data_domestic_epi(con = con)
+                                     a_tbl = get_case_data_domestic_epi(con = con),
+                                     strats = c("pt", "agegroup20"),
+                                     MAX_NUM_unique_values_ALLOWED = 60#,
+                                     #single_strat_wide = T
                                      # 
                                      # get_flat_case_tbl(con = con) %>% 
                                      # filter(Classification %in% c("Confirmed", "Probable"))
@@ -1125,39 +1133,71 @@ get_values_count_summary <- function(con = get_covid_cases_db_con(),
   
   new_tbl <- bind_cols( a_tbl %>% select(! matches("Date")) , a_tbl_mn, a_tbl_wk, a_tbl_dow) 
   
+  
+
   cnms <- colnames(new_tbl)
-  cnms <- cnms[ ! cnms %in% c("pt", "phacid", "ptcaseid", "comments")]
-  cnms <- cnms[ ! cnms  %in% c("pt", "phacid")]
+  cnms <- cnms[ ! cnms %in% c("phacid", "ptcaseid", "comments")]
+  cnms <- cnms[ ! cnms %in% strats]
+  cnms <- cnms[ ! cnms  %in% c("phacid")]
   cnms <- cnms[ ! grepl(pattern = "spec$", x = cnms)]
   cnms <- cnms[ ! grepl(pattern = "comment", x = cnms)]
   
   
   ret_val <- 
-    lapply(cnms,function(cnm){
+    map_dfr(cnms,function(cnm){
+      print(cnm)
       uvals <- new_tbl %>% #count(!!sym(cnm))
         mutate(value = clean_str(!!sym(cnm), BLANK_replace = "NULL or BLANK STRING", NA_replace = "NULL or BLANK STRING")) %>% 
-        count(value, pt)
+        group_by_at(c("value", strats)) %>% 
+        summarise(n = n()) %>%
+        ungroup()
+        
       
       
       uvals <- 
-        if(length(uvals$value %>% unique()) > 20){
+        if(length(uvals$value %>% unique()) > MAX_NUM_unique_values_ALLOWED){
           return(NULL)
           # uvals <- uvals %>% arrange(desc(n)) %>% group_by(PT) %>%  
           #   do(head(., n = 9))
           # uvals
         }else{uvals}
+      
+      
+      uvals <- 
+        lapply(strats, function(srtt){
+          sum_nm <- paste0("n_", srtt)
+          frac_nm <- paste0("f_", srtt)
+          
+          uvals %>% group_by_at(srtt) %>% 
+          mutate(!!sum_nm := sum(n, na.rm = T)) %>% ungroup() %>% 
+          mutate(!!frac_nm := n / !!sym(sum_nm))
+        
+        
+          
+        }) %>% reduce(inner_join, by = c("value", "n", strats))
+        
+      uvals <-
+        uvals %>% group_by_at(strats) %>% 
+          mutate(n_all_strats := sum(n, na.rm = T)) %>% ungroup() %>% 
+          mutate(f_all_strats := n / n_all_strats)
+      
+      
       uvals %>% 
         mutate(name = cnm,
                value = as.character(value)) %>%
         return()
-    }) %>% bind_rows()
+    })
   
   
   
-  ret_wide <- 
-    ret_val %>% pivot_wider(names_from = pt, values_from = n, values_fill  = 0) %>% 
-    mutate(. , Canada = rowSums(.[3:ncol(.)])) 
-  return(ret_wide)
+  # if (single_strat_wide = T){
+  #   ret_wide <- 
+  #     ret_val %>% pivot_wider(names_from = pt, values_from = n, values_fill  = 0) %>% 
+  #     mutate(. , Canada = rowSums(.[3:ncol(.)])) 
+  #   return(ret_wide)
+  # }else{
+    return(ret_val)
+  #}
   
 }
 
@@ -1179,7 +1219,7 @@ get_StatsCan <- function(con = get_covid_cases_db_con(),
   # df2 <- 
   #   df %>% 
   #   mutate(., EpisodeDate = make_EpisodeDate(.),
-  #          Gender2 = make_Gender_2(.),
+  #          sex2 = make_sex_2(.),
   #          Occupation2 = make_Occupation_2(.),
   #          Healthcare_worker2 = make_healthcare_worker_2(.),
   #          LTC_Resident2 = make_LTC_Resident_2(.),
@@ -1208,6 +1248,24 @@ get_StatsCan <- function(con = get_covid_cases_db_con(),
   
 }
 
+get_DataHub <- function(con = get_covid_cases_db_con(), 
+                        df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed")),
+                        cols = get_report_cols("DataHub")){
+  
+  df %>% 
+    mutate(., EpisodeDate = make_EpisodeDate(.)) %>%
+    mutate(., Occupation2 = make_Occupation_2(.)) %>%
+    mutate(., Healthcare_worker2 = make_healthcare_worker_2(.)) %>%
+    mutate(., Asymptomatic2 = make_Asymptomatic_2(.)) %>%
+    mutate(., OnsetDate2 = make_OnsetDate2(.)) %>%
+    mutate(., HospStatus = make_hospstatus(.)) %>%
+    mutate(., Disposition2 = make_Disposition2(.)) %>%
+    mutate(., RecoveryDate2 = make_RecoveryDate2(.)) %>%
+    mutate(., exposure_cat2 = make_exposure_cat2(.)) %>%
+    make_final_clean_df(report_filter = "DataHub", cols = cols)
+  
+}
+
 
 get_HCDaily <- function(con = get_covid_cases_db_con(), 
                         #df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed")),
@@ -1227,7 +1285,7 @@ get_HCDaily <- function(con = get_covid_cases_db_con(),
   # df2 <- 
   #   df %>% 
   #   mutate(., EpisodeDate = make_EpisodeDate(.),
-  #          Gender2 = make_Gender_2(.),
+  #          sex2 = make_sex_2(.),
   #          Occupation2 = make_Occupation_2(.),
   #          Healthcare_worker2 = make_healthcare_worker_2(.),
   #          LTC_Resident2 = make_LTC_Resident_2(.),
@@ -1334,8 +1392,80 @@ get_domestic_survelance <- function(con = get_covid_cases_db_con(),
 }
 
 
+#' 
+#' df %>% select(matches("date"))
+#' df %>% select_if(function(x){is(x, class2 = "POSIXct")})
+#' df %>% select_if(is, class = "POSIXct")
+#' 
+#' class(df$OnsetDate)
+#' 
 
 
+get_deltas_dates <- function(df,
+                          colforcompare = "OnsetDate",
+                          cols_dts = df %>% select_if(function(x){is(x, class2 = "POSIXct")}) %>% colnames(),
+                          units = "days",
+                          min_frac = 0.5){
+  #' what are the deltas of all the relevent columns
+
+  map_dfc(grep(pattern = colforcompare,  x = cols_dts ,value = T , invert = T), function(curr_col){
+    newcolnm <- paste0(colforcompare, "_2_", curr_col)
+
+    x = as.integer(difftime(df[[curr_col]], df[[colforcompare]], units = units))
+    if (sum(is.na(x))*(1/min_frac) < length(x)){
+      x = replace(x, is.na(x), values = sample(x = x[!is.na(x)], size = sum(is.na(x)), replace = T))
+    }else{
+      x = rep(NA, length(x))
+    
+    }
+    tibble(col = x
+    ) %>%
+      rename(!!sym(newcolnm) := col)
+  })
+}
+#' 
+#' 
+#' #todo:
+#' #TODO:
+make_imputed_date <- function(df = get_db_tbl(con = con, tlb_nm = "qry_allcases_with_Intl_Travel_Exposure"),
+                              date_col_nm = "OnsetDate",
+                              date_col_nm_patern = "date"
+){
+  #df %>% impute_deltas() %>% view()
+
+
+  cols_dts = df %>% select_if(function(x){is(x, class2 = "POSIXct")}) %>% colnames()
+
+  df2 <-
+    bind_cols(df %>% select(!!sym(date_col_nm)),
+              get_deltas_dates(df = df, colforcompare = date_col_nm, cols_dts = cols_dts))
+
+  
+  cols_to_use <- 
+    map_dfc( df2 %>% select(starts_with(date_col_nm)) %>% select_if(is.numeric), function(x) {
+      quantile(x, probs = c(0.95), na.rm = T) - quantile(x, probs = c(0.05), na.rm = T)
+    }) %>% sort() %>% colnames()  
+  
+  df2[[date_col_nm]] <- as.Date(df2[[date_col_nm]])
+  x <- df2[[date_col_nm]]
+  
+  #x%>% is.na() %>% sum()
+  for (c_nm in cols_to_use){
+      col_2_nm <- gsub(paste0(date_col_nm, "_2_"), "",c_nm)
+      x <-
+      if_else(!is.na(x), x ,
+           if_else(!is.na(df2[[c_nm]]), 
+                   as.Date(df[[col_2_nm]] - df2[[c_nm]], origin="1970-01-01"),
+                   as.Date(NA)
+           )
+      )  
+      print(x %>% is.na() %>% sum() )
+    
+  }
+  
+  
+  return(x) 
+}
 
 
 get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(), 
@@ -1345,10 +1475,54 @@ get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(),
                                        
 ){
   #' return Dataframe with Query all cases in it
+  #' 
+  #' 
+  if (! is.null(get_db_tbl_IN_MEM_CACHE[["get_case_data_domestic_epi"]])){
+    return(get_db_tbl_IN_MEM_CACHE[["get_case_data_domestic_epi"]])
+  }
+  
+  
   df <- get_db_tbl(con = con, tlb_nm = "qry_allcases_with_Intl_Travel_Exposure")#, force_refresh = T)
+  
+  pts <- df %>% distinct(PT) %>% pull()
+  
+  
+  to_impute <- c("PHACReportedDate", "ReportedDate", "OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1", "EpisodeDate")
+  
+  
+  imuted_dates <- 
+    map_dfr(pts, function(curr_pt){
+      
+      df_for_impute <-
+      df %>% 
+        filter(PT == curr_pt) %>% 
+        select(PHACID,PT,  to_impute)
+      
+      
+      imuted_dates_pt <- 
+        map_dfc(to_impute, function(c_nm){make_imputed_date(df = df_for_impute, date_col_nm = c_nm) }) %>% 
+        set_names(to_impute) %>%
+        rename_all(function(x){paste0(x, "_imputed")}) %>% 
+        #select_if(function(x) any(!is.na(x))) %>% 
+        #select_if(function(x){sum(is.na(x))/length(x)< 0.5}) %>%
+        bind_cols(df_for_impute %>% select(PHACID), .)
+      
+      print(curr_pt)
+      print(ncol(imuted_dates_pt))
+      return(imuted_dates_pt)
+    })
+  #df %>% pull(OnsetDate) %>% is.na() %>% sum()
+  df2 <- 
   df %>% 
+    left_join(., imuted_dates, by = "PHACID") %>%
+    #bind_cols(., imuted_dates) %>% 
     make_final_clean_df(report_filter = "qry_allcases", cols = cols)
   
+  
+  get_db_tbl_IN_MEM_CACHE[["get_case_data_domestic_epi"]]  <<- df2
+  #df2 %>% select(pt, episodedate, episodedate_imputed) %>% filter(pt == "mb") %>% filter(is.na(episodedate))
+  return(df2)
+ 
   
   #   
   #   
@@ -1461,28 +1635,28 @@ get_db_error_report_by_case_error_Residency_canadian<- function(con = get_covid_
     filter(Residency == "" & nchar(ResidenceCountry) > 0) %>% 
     select(PHACID) %>% 
     mutate(err = "Residency is unspecified, yet ResidenceCountry is not blank.")%>% collect() %>% 
-    mutate(typ = "Residency" )
+    mutate(typ = "Residency is unspecified, yet ResidenceCountry is not blank." )
 }
 get_db_error_report_by_case_error_Residency_canadian_but_not<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     filter(Residency == "Canadian resident" & !(str_to_lower( ResidenceCountry )==str_to_lower("CANADA"))) %>% 
     select(PHACID) %>% 
     mutate(err = "Residency is Canadian, yet ResidenceCountry is not.")%>% collect() %>% 
-    mutate(typ = "Residency" )
+    mutate(typ = "Residency is Canadian, yet ResidenceCountry is not." )
 }
 get_db_error_report_by_case_error_Age_Age_group<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     filter(!is.na(Age) & (tolower(AgeGroup10) == tolower("Unknown") | tolower(AgeGroup20) == tolower("Unknown") )) %>% 
     select(PHACID) %>% 
     mutate(err = "Exact Age is given but Agegroup is listed as unkown.")%>% collect() %>% 
-    mutate(typ = "Age" )
+    mutate(typ = "Age group unkown, but known age" )
 }
 get_db_error_report_by_case_error_Age_Age_units<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
     filter(!is.na(Age) & AgeUnit == "") %>% 
     select(PHACID) %>% 
     mutate(err = "Exact Age is given but Age units are not.") %>% collect() %>% 
-    mutate(typ = "Age" )
+    mutate(typ = "No Age units" )
 }
 
 
@@ -1499,7 +1673,7 @@ get_db_error_report_by_case_Sym<- function(con = get_covid_cases_db_con(), a_tbl
     summarise(err = paste0(err, collapse = " and") ) %>% 
     mutate(err = paste0("Asymptomatic is 'yes' but",  err, collapse = " and ") ) %>% 
     select(PHACID, err) %>% 
-    mutate(typ = "symptoms" )
+    mutate(typ = "Asymptomatic but not" )
 }
 
 get_db_error_report_by_case_Hosp<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
@@ -1511,7 +1685,7 @@ get_db_error_report_by_case_Hosp<- function(con = get_covid_cases_db_con(), a_tb
     select(PHACID) %>% 
     mutate(err = paste0("A hospital date is listed but Hosp is not Yes") ) %>% 
     select(PHACID, err) %>% collect() %>% 
-    mutate(typ = "Hosp" )
+    mutate(typ = "A hospital date is listed but Hosp is not Yes" )
 }
 
 get_db_error_report_by_case_ICU<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
@@ -1559,7 +1733,7 @@ get_db_error_report_by_case_Reovered<- function(con = get_covid_cases_db_con(), 
     select(PHACID, RecoveryDate, Disposition) %>% 
     mutate(err = paste0("Recovery date of '",RecoveryDate,"' is listed but Disposition is '", Disposition, "'") ) %>% 
     select(PHACID, err)  %>% collect() %>% 
-    mutate(typ = "Recovered" )
+    mutate(typ = "Recovery date listed but not recovered" )
 }
 get_db_error_report_by_case_Death<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
   a_tbl %>% 
@@ -1570,7 +1744,7 @@ get_db_error_report_by_case_Death<- function(con = get_covid_cases_db_con(), a_t
     select(PHACID, DeathDate, Disposition) %>% 
     mutate(err = paste0("Death date of '",DeathDate,"' is listed but Disposition is '", Disposition, "'") ) %>% 
     select(PHACID, err)  %>% collect() %>% 
-    mutate(typ = "Death" )
+    mutate(typ = "Death date listed but not dead." )
 }
 
 
@@ -1627,7 +1801,7 @@ get_db_error_report_by_case_Dead_and_alive<- function(con = get_covid_cases_db_c
     select(PHACID, DeathDate, RecoveryDate) %>% 
     mutate(err = paste0("Both Death date '",DeathDate,"' and recovery date '",RecoveryDate,"' listed.") ) %>% 
     select(PHACID, err)  %>% collect() %>% 
-    mutate(typ = "DeadorAlive" )
+    mutate(typ = "Both Death date and recovery date listed." )
 }
 
 get_db_error_report_by_case_dead_before_onset<- function(con = get_covid_cases_db_con(), a_tbl = tbl(con, "case") ){
@@ -1708,6 +1882,29 @@ get_db_error_report_by_case_future_dates<- function(con = get_covid_cases_db_con
     mutate(typ = "Future Date" )
   
 }
+
+get_db_error_report_by_case_2020_dates<- function(con = get_covid_cases_db_con(), a_tbl = get_flat_case_tbl(con = con) ){
+  
+  tmp <- 
+    a_tbl %>% 
+    select(matches("Date")) %>%
+    select_if(is.Date) 
+  
+  col_nms <- colnames(tmp)
+  #select(PHACReportedDate, ReportedDate) %>% 
+  #mutate(a = PHACReportedDate > Sys.Date()) %>% select(a) %>% table()
+  tmp %>%   mutate_all(function(x){x < as.Date("2020-01-01")}) %>%
+    bind_cols(a_tbl %>% select(PHACID), .) %>% 
+    pivot_longer(cols = matches("Date"), values_drop_n = T) %>% 
+    filter(value == T) %>% 
+    mutate(err = paste0(name , " is before 2020-01-01") ) %>% 
+    select(PHACID, err)  %>% collect() %>% 
+    mutate(typ = "Before 2020-01-01 Date" )
+  
+}
+
+
+
 get_db_error_report_by_case_still_sick<- function(con = get_covid_cases_db_con(), a_tbl = get_flat_case_tbl(con = con) ){
   a_tbl %>% 
     select(Classification, Disposition, PHACID, OnsetDate, ReportedDate) %>% 
@@ -1729,6 +1926,18 @@ get_db_error_report_by_case_still_sick_reported<- function(con = get_covid_cases
     select(PHACID, err)  %>% collect() %>% 
     mutate(typ = "Reported Long time ago." )
 }
+
+
+get_db_error_report_by_age_bad<- function(con = get_covid_cases_db_con(), a_tbl = get_flat_case_tbl(con = con) ){
+  a_tbl %>% 
+    select(Age, PHACID) %>% 
+    filter(Age < 0  | Age > 113) %>%
+    mutate(err = paste0("Age  ",Age," is  wrong") ) %>% 
+    select(PHACID, err)  %>% collect() %>% 
+    mutate(typ = "age out of range" )
+}
+
+
 
 
 
@@ -1759,7 +1968,8 @@ get_db_error_report_by_case <- function(con = get_covid_cases_db_con(), a_tbl = 
       get_db_error_report_by_case_future_dates(a_tbl = a_tbl),
       get_db_error_report_by_case_still_sick(a_tbl = a_tbl),
       get_db_error_report_by_case_still_sick_reported(a_tbl = a_tbl),
-      
+      get_db_error_report_by_age_bad(a_tbl = a_tbl),
+      get_db_error_report_by_case_2020_dates(a_tbl = a_tbl)
     ) %>% arrange(PHACID)
   
   ids <- unique(errs$PHACID)
@@ -1777,7 +1987,7 @@ get_db_error_report_by_case <- function(con = get_covid_cases_db_con(), a_tbl = 
 
 
 
-extract_table_report <- function(df_fun, fn, report_filter, password = NULL, ...){
+extract_table_report <- function(df_fun,fn, report_filter, password = NULL, save_type = "file", dir = dirname(fn), short_fn = basename(fn), ...){
   
   if(!get_export_should_write(report_filter= report_filter)){
     print(paste0("Not wrting '",report_filter,"' today."))
@@ -1791,28 +2001,42 @@ extract_table_report <- function(df_fun, fn, report_filter, password = NULL, ...
   toc <- Sys.time()
   print(paste0("took ", format(toc - tic), " to get data"))
   
-  tic <- Sys.time()
   
-  target_dir <- dirname(fn)
-  if ( ! dir.exists(target_dir)){
-    dir.create(target_dir, recursive = T)
+  tic <- Sys.time()  
+  if (save_type == "file")
+  {  
+  
+  
+    target_dir <- dirname(fn)
+    if ( ! dir.exists(target_dir)){
+      dir.create(target_dir, recursive = T)
+    }
+      writexl::write_xlsx(x = df ,#%>% head(50000),
+                          path = fn,
+                          col_names = TRUE,
+                          format_headers = TRUE,
+                          use_zip64 = FALSE)
+      
+      # xlsx::write.xlsx(x = df, 
+      #            file = fn, 
+      #            col.names=TRUE, 
+      #            row.names=FALSE, 
+      #            append=FALSE, 
+      #            showNA=FALSE, 
+      #            password=password)
+  }else if (save_type == "azureblob"){
+   #todo: 
+    AZURE_KEY = keyring::key_get(report_filter)
+    blob_cont <- blob_container(endpoint = dir, key=AZURE_KEY)
+    writexl::write_xlsx(x = df,
+      path = file.path(rappdirs::user_cache_dir(), short_fn),
+      col_names = TRUE,
+      format_headers = TRUE,
+      use_zip64 = FALSE
+    )
+    AzureStor::upload_blob(container =blob_cont, src = file.path(rappdirs::user_cache_dir(), short_fn), dest = short_fn)
+    #TODO:
   }
-  
-  
-  writexl::write_xlsx(x = df ,#%>% head(50000),
-                      path = fn,
-                      col_names = TRUE,
-                      format_headers = TRUE,
-                      use_zip64 = FALSE)
-  
-  # xlsx::write.xlsx(x = df, 
-  #            file = fn, 
-  #            col.names=TRUE, 
-  #            row.names=FALSE, 
-  #            append=FALSE, 
-  #            showNA=FALSE, 
-  #            password=password)
-  
   
   toc <- Sys.time()
   print(paste0("took ", format(toc - tic), " to write data"))
@@ -1852,7 +2076,7 @@ extract_case_db_errs <- function(){
 extract_case_data_domestic_epi <- function(){
   extract_table_report(df_fun = get_case_data_domestic_epi, 
                        fn = path.expand( file.path(get_report_dir("qry_allcases"), 
-                                                   paste0("qry_allcases "  , format(Sys.Date() ,"%m-%d-%Y"),".xlsx")#, "_SEMI_AUTOMATED.xlsx")
+                                                   paste0("qry_allcases "  , format(Sys.Date() ,"%m-%d-%Y"),"_NEW_FORMAT.xlsx")#, "_SEMI_AUTOMATED.xlsx")
                        )),
                        report_filter = "qry_allcases"
   )
@@ -1862,7 +2086,7 @@ extract_case_data_domestic_epi <- function(){
 extract_case_data_domestic_survelance <- function(){
   extract_table_report(df_fun = get_domestic_survelance, 
                        fn = path.expand( file.path(get_report_dir("Domestic surveillance"), 
-                                                   paste0("Domestic surveillance data - "  , format(Sys.Date() ,"%Y-%m-%d"),".xlsx")#, "_SEMI_AUTOMATED.xlsx")
+                                                   paste0("Domestic surveillance data - "  , format(Sys.Date() ,"%Y-%m-%d"),"_NEW_FORMAT.xlsx")#, "_SEMI_AUTOMATED.xlsx")
                        )),
                        report_filter = "Domestic surveillance"
   )
@@ -1871,7 +2095,7 @@ extract_case_data_domestic_survelance <- function(){
 
 extract_case_data_get_HCDaily <- function(){
   
-  fn = paste0(format(Sys.Date() ,"%Y%m%d"), "_HCDaily.xlsx")#_SEMI_AUTOMATED.xlsx")
+  fn = paste0(format(Sys.Date() ,"%Y%m%d"), "_HCDaily_NEW_FORMAT.xlsx")#_SEMI_AUTOMATED.xlsx")
   full_fn = path.expand( file.path(get_report_dir("HCDaily"), fn))
   
   
@@ -1884,8 +2108,31 @@ extract_case_data_get_HCDaily <- function(){
 }
 
 
+
+
+
+extract_case_data_get_DataHub <- function(){
+  
+  # fn = paste0(format(Sys.Date() ,"%Y%m%d"), "_DataHub_NEW_FORMAT.xlsx")#_SEMI_AUTOMATED.xlsx")
+  fn = paste0("current_DataHub_NEW_FORMAT.xlsx")#_SEMI_AUTOMATED.xlsx")
+  full_fn = path.expand( file.path(get_report_dir("DataHub"), fn))
+  
+  
+  extract_table_report(df_fun = get_DataHub, 
+                       fn = full_fn,
+                       report_filter = "DataHub",
+                       save_type = get_report_save_type("DataHub")
+  )
+
+  
+  
+  
+}
+
+
+
 extract_case_data_get_StatsCan <- function(){
-  fn = paste0("Weekly Extended Dataset_", format(Sys.Date() ,"%Y%m%d"),".xlsx")#, "_SEMI_AUTOMATED.xlsx")
+  fn = paste0("Weekly Extended Dataset_", format(Sys.Date() ,"%Y%m%d"),"_NEW_FORMAT.xlsx")#, "_SEMI_AUTOMATED.xlsx")
   full_fn = path.expand( file.path(get_report_dir("STATCAN"), fn))
   
   extract_table_report(df_fun = get_StatsCan, 
@@ -1901,7 +2148,7 @@ extract_case_data_get_WHO <- function(){
   extract_table_report(df_fun = get_WHO, 
                        #password = keyring::key_get(),
                        fn = path.expand( file.path(get_report_dir("WHO"), 
-                                                   paste0("Canada_COVID19_WHO_linelist-", format(Sys.Date() ,"%d%B%Y"),".xlsx")#, "_SEMI_AUTOMATED.xlsx")
+                                                   paste0("Canada_COVID19_WHO_linelist-", format(Sys.Date() ,"%d%B%Y"),"_NEW_FORMAT.xlsx")#, "_SEMI_AUTOMATED.xlsx")
                        )),
                        report_filter = "WHO"
   )
@@ -1949,6 +2196,159 @@ extract_case_data_get_completness_analysis <- function(){
   
 }
 
+
+extract_case_data_get_metabase_diff <- function(){
+  report_filter = "metabase_diff"
+  
+  meta_diff_dir <- get_report_dir(report_filter)
+  
+  if ( ! dir.exists(meta_diff_dir)){
+    dir.create(meta_diff_dir, recursive = T)
+  }
+  
+  library(metabaser)
+  
+  META_BASE_HRE_URL <- "https://discover-evh1.hres.ca/api"
+  META_BASE_HRE_CASES_DB_ID <- 2
+  META_BASE_HRE_USER_NAME <- keyring::key_get("username_for_meta_base_on_HRE") #"howard.swerdfeger@canada.ca"
+  META_BASE_HRE_PASSWORD <- keyring::key_get("password_for_meta_base_on_HRE")
+  
+  metabase_handle <- metabase_login(base_url = META_BASE_HRE_URL,
+                                    database_id = META_BASE_HRE_CASES_DB_ID,
+                                    username = META_BASE_HRE_USER_NAME,
+                                    password = META_BASE_HRE_PASSWORD)
+  
+  cases_meta_raw <- metabase_query(metabase_handle, "SELECT * from cases", col_types = cols(.default = col_character()))
+  severity_meta_raw <- metabase_query(metabase_handle, "SELECT * from severity", col_types = cols(.default = col_character()))
+  
+
+  cases_meta_raw <- metabase_query(metabase_handle, "SELECT * from cases", col_types = cols(.default = col_character()))
+  
+  
+  cases_meta_raw %>% count(phacid , sort = T)
+  severity_meta_raw %>% count(phacid , sort = T)
+  
+  
+  
+  #cases_meta %>% count(deathcause, sort = T)
+  
+  cases_meta <- 
+    cases_meta_raw %>%
+    left_join(severity_meta_raw, by = "phacid") %>% #count(phacid , sort = T)
+    mutate_if(is.character, function(x){if_else(x == "not collected", "", x)})  %>% #count(disposition)
+    mutate(disposition = if_else(disposition == "unknown", "", disposition))  %>% count(disposition)
+  #cases_meta <- metabase_query(metabase_handle, "SELECT phacid, pt, ptcaseid, sex from cases where sex != 'male' and sex != 'female' and sex != 'unknown'", col_types = cols(.default = col_character()))
+  #cases_meta %>% count(sex, pt)
+  
+  
+  # cases_meta %>% count(disposition, pt) %>%
+  #   pivot_wider(names_from = "pt", values_from = "n") %>% 
+  #   writexl::write_xlsx(x = . , path = file.path(meta_diff_dir, "meta_base_disposition.xlsx"))
+  
+  ms_access_con = get_covid_cases_db_con()
+  cases_orig <- tbl(ms_access_con, "Case") %>% 
+    collect()%>% 
+    rename_all(tolower) %>% 
+    mutate_if(is.character, str_to_lower)
+  
+  cases_missing_from_meta <- 
+  anti_join(cases_orig %>% select(phacid, pt, ptcaseid, phacreporteddate, classification), cases_meta %>% select(pt, ptcaseid), by = c("pt", "ptcaseid"))
+  
+  cases_missing_from_access <- 
+  anti_join(cases_meta %>% select(phacid, pt, ptcaseid, phacreporteddate, classification), cases_orig %>% select(pt, ptcaseid), by = c("pt", "ptcaseid"))
+  
+  
+  writexl::write_xlsx(x = cases_missing_from_meta ,#%>% head(50000),
+                      path = file.path(meta_diff_dir, paste0(format(Sys.Date() ,"%Y-%m-%d"), "_cases_missing_from_meta.xlsx" )),
+                      col_names = TRUE,
+                      format_headers = TRUE,
+                      use_zip64 = FALSE
+                      )
+  
+  
+  
+  writexl::write_xlsx(x = cases_missing_from_access ,#%>% head(50000),
+                      path = file.path(meta_diff_dir, paste0(format(Sys.Date() ,"%Y-%m-%d"), "_cases_missing_from_access.xlsx" )),
+                      col_names = TRUE,
+                      format_headers = TRUE,
+                      use_zip64 = FALSE
+  )
+  
+  
+  
+  cols_missing_from_metabase <- setdiff(cases_orig %>% colnames(), cases_meta %>% colnames())
+  writexl::write_xlsx(x = tibble(cols_missing_from_metabase) ,#%>% head(50000),
+                      path = file.path(meta_diff_dir, paste0(format(Sys.Date() ,"%Y-%m-%d"), "_cols_missing_from_metabase.xlsx" )),
+                      col_names = TRUE,
+                      format_headers = TRUE,
+                      use_zip64 = FALSE
+  )
+  
+  cols_missing_from_access <- setdiff(cases_meta %>% colnames(), cases_orig %>% colnames())
+  writexl::write_xlsx(x = tibble(cols_missing_from_metabase) ,#%>% head(50000),
+                      path = file.path(meta_diff_dir, paste0(format(Sys.Date() ,"%Y-%m-%d"), "_cols_missing_from_access.xlsx" )),
+                      col_names = TRUE,
+                      format_headers = TRUE,
+                      use_zip64 = FALSE
+  )  
+
+  
+  
+  common_cols  <- cases_orig %>% select(any_of(colnames(cases_meta))) %>% colnames() %>% sort()
+  common_cols2  <- cases_meta %>% select(any_of(colnames(cases_orig)))%>% colnames()%>% sort()
+  
+  
+  writexl::write_xlsx(x = tibble(common_cols) ,#%>% head(50000),
+                      path = file.path(meta_diff_dir, paste0(format(Sys.Date() ,"%Y-%m-%d"), "_Common_cols.xlsx" )),
+                      col_names = TRUE,
+                      format_headers = TRUE,
+                      use_zip64 = FALSE
+  )  
+  
+  
+  
+  same_cases <- inner_join(cases_orig %>% select(common_cols), 
+                           cases_meta %>% select(common_cols), 
+                           by = c("pt", "ptcaseid"), 
+                           suffix  = c("_orig", "_meta"))
+  
+  
+  
+  
+  
+  
+  
+  col_level_diff <- 
+    map_dfr(setdiff(common_cols, c("phacid", "pt", "ptcaseid")), function(curr_col){
+      print(curr_col)
+      tibble(
+        are_same = as.character(same_cases[[paste0(curr_col, "_orig")]])  == as.character(same_cases[[paste0(curr_col, "_meta")]]),
+        colname = curr_col,
+        phacid_orig = same_cases$phacid_orig,
+        phacid_meta = same_cases$phacid_meta,
+        ptcaseid = same_cases$ptcaseid,
+        pt = same_cases$pt,
+        value_orig = as.character( same_cases[[paste0(curr_col, "_orig")]] ) ,
+        value_meta = as.character( same_cases[[paste0(curr_col, "_meta")]] )
+      ) %>% filter(are_same == F)
+    })  
+  
+  col_level_diff <- 
+  col_level_diff %>% 
+    mutate(value_orig = clean_str(value_orig),
+           value_meta = clean_str(value_meta))
+  writexl::write_xlsx(x = col_level_diff ,#%>% head(50000),
+                      path = file.path(meta_diff_dir, paste0(format(Sys.Date() ,"%Y-%m-%d"), "_col_level_diff.xlsx" )),
+                      col_names = TRUE,
+                      format_headers = TRUE,
+                      use_zip64 = FALSE
+  )
+  
+  
+  
+  
+  #END FUNCTION
+}
 
 
 
@@ -2012,21 +2412,93 @@ backup_db <- function(full_fn = file.path(DIR_OF_DB_2_BACK_UP, NAME_DB_2_BACK_UP
 # }
 
 
+
+#
+# con = get_covid_cases_db_con()
+# df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed", "Probable"))
+# 
+# 
+# cols_to_check <- df %>% select_if(is.character) %>% colnames()
+# 
+# cols_to_check <- cols_to_check[!cols_to_check %in% c("PHACID", "PT", "PTCaseID", "PHACReportedDate")]
+# 
+# 
+# ttfn <-
+#   map_dfr(cols_to_check, function(curr_col){
+#     print(curr_col)
+#     tmp <- df %>%
+#       rename(col_val := !!sym(curr_col)) %>%
+#       count(col_val, sort = T) %>%
+#       mutate(col_orig_val = col_val) %>%
+#       mutate(col_val = clean_str(col_val))
+# 
+# 
+#     tmp2 <- df %>%
+#       rename(col_val := !!sym(curr_col)) %>%
+#       mutate(col_val = clean_str(col_val)) %>%
+#       count(col_val, sort = T)
+# 
+#     ret_val <-
+#     full_join(tmp, tmp2, by = "col_val", suffix = c("_clean_first", "_clean_after")) %>%
+#       mutate(col_name = curr_col) %>%
+#       filter(n_clean_first != n_clean_after)
+# 
+#     Best_Values <-
+#       ret_val %>%
+#       group_by(col_val) %>%
+#       arrange(col_val, desc(n_clean_first)) %>%
+#       slice(which((n_clean_first == max(n_clean_first)))) %>%
+#       rename(cleaned_value := col_val,
+#              best_value := col_orig_val
+#       ) %>% select(cleaned_value, best_value)
+# 
+#       # ungroup() %>%
+#       # rename(new_value := col_val,
+#       #        old_value := col_orig_val,
+#       #        varName := col_name
+#       # ) %>% select(varName, old_value, new_value)
+# 
+#     ret_val_2 <-
+#       df %>%
+#       rename(old_value := !!sym(curr_col)) %>%
+#       mutate(cleaned_value = clean_str(old_value)) %>%
+#       select(PHACReportedDate, PHACID, PTCaseID, PT, old_value, cleaned_value) %>%
+#       inner_join(Best_Values, by = "cleaned_value") %>%
+#       filter(best_value != old_value) %>%
+#       mutate(varName = curr_col) %>%
+#       mutate(Approved = "")  %>%
+#       rename(new_value := best_value) %>%
+#       select(Approved, PHACReportedDate, PHACID, PTCaseID, PT, varName, old_value,new_value)
+# 
+#     return(ret_val_2)
+#   })
+# 
+# 
+# ttfn %>% filter(old_value  !=  new_value )  %>% filter(new_value != "") %>% filter(!is.na(new_value)) %>%  writexl::write_xlsx(file.path("~", "..", "Desktop", "ttfn.xlsx"))
+
 do_end_of_day_tasks <- function(){
-  backup_db()
+  get_email_sentence()
+  #backup_db()
   extract_case_db_errs()
   extract_case_data_get_StatsCan()
   extract_case_data_domestic_epi()
   extract_case_data_domestic_survelance()
   extract_case_data_get_HCDaily()
-  extract_case_data_get_completness_analysis()
+  extract_case_data_get_DataHub()
   extract_case_data_get_WHO()
+  
+  extract_case_data_get_completness_analysis()
   extract_case_data_Count_Summary()
-  #extract_positives_by_age_prov()
+  
   extract_case_data_get_ijn()
-  #extract_epi_curves()
-  #extract_percent_by_time()
+  
   get_email_sentence()
+  
+  extract_case_data_get_metabase_diff()
+  extract_positives_by_age_prov()
+  extract_epi_curves()
+  extract_percent_by_time()
+  
 }
 do_end_of_day_tasks()
 

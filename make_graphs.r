@@ -61,11 +61,11 @@ get_db_counts <- function(con = get_covid_cases_db_con(),
 #a_tbl <- a_tbl %>% mutate(AgeGroup10 = as.ordered(AgeGroup10))
 #COL_NM = c("COVIDDeath","SymShortnessofBreath","Asymptomatic", "Indigenous", "Hosp", "ICU")
 plot_epi_curve <- function(con = get_covid_cases_db_con(), 
-                           a_tbl = get_flat_case_tbl(con = con),
-                           classifications_allowed = c("Probable", "Confirmed"),
-                           dt_col = "OnsetDate",
-                           col_col_nm = "EXPOSURE_CAT",
-                           facet_col_nm = "PT",
+                           a_tbl = get_case_data_domestic_epi(con = con), #get_flat_case_tbl(con = con),
+                           classifications_allowed = c("probable", "confirmed"),
+                           dt_col = "onsetdate_imputed",
+                           col_col_nm = "exposure_cat",
+                           facet_col_nm = "pt",
                            clr = "blue",
                            early_dt =Sys.Date() %m-% months(6),
                            rolling_average = 7,
@@ -86,7 +86,7 @@ plot_epi_curve <- function(con = get_covid_cases_db_con(),
     rename(facet_col := facet_col_nm) %>% 
     mutate(facet_col = fct_lump_prop(facet_col , prop = MIN_LUMP_PROP)) %>% 
     group_by(facet_col) %>% 
-    summarise(base_fog = max(PHACReportedDate, na.rm = T)) %>% 
+    summarise(base_fog = max(phacreporteddate, na.rm = T)) %>% 
     # {if(facet_col_nm == "PHACReportedDate") base_fog 
     #   else if (facet_col_nm == "ReportedDate") base_fog - 3
     #   
@@ -100,8 +100,8 @@ plot_epi_curve <- function(con = get_covid_cases_db_con(),
   
   df_p <- 
   a_tbl %>% 
-    filter(Classification %in% classifications_allowed) %>% 
-    select(PHACID, dt_col, col_col_nm, facet_col_nm) %>%
+    filter(classification %in% classifications_allowed) %>% 
+    select(phacid, dt_col, col_col_nm, facet_col_nm) %>%
     rename(date := dt_col, col_col := col_col_nm, facet_col := facet_col_nm) %>% #pull(date) %>% as.Date()
     filter(!is.na(date)) %>% 
     mutate(facet_col = fct_lump_prop(facet_col , prop = MIN_LUMP_PROP)) %>% 
@@ -346,16 +346,15 @@ extract_single_percent_by_time <- function(dt_col,
 
 extract_epi_curves <- function(report_filter= "epi_curves", 
                                target_dir = get_generic_report_dir("epi_curves"), 
-                               dt_col = c(#"OnsetDate", 
-                                 "ReportedDate"), 
-                               col_col_nm = c("Disposition",
-                                              "Ethnicity", 
-                                              "EXPOSURE_CAT", 
-                                              "Asymptomatic", 
-                                              "AgeGroup20", 
+                               dt_col = c("onsetdate_imputed"), 
+                               col_col_nm = c("disposition",
+                                              #"ethnicity", 
+                                              "exposure_cat", 
+                                              "asymptomatic2", 
+                                              "agegroup20", 
                                               #"AgeGroup10", 
                                               #"Indigenous", 
-                                              "Hosp"#, 
+                                              "hospstatus"#, 
                                               #"ICU", 
                                               #"PT"
                                               )){
@@ -388,19 +387,18 @@ extract_epi_curves <- function(report_filter= "epi_curves",
 
 extract_percent_by_time <- function(report_filter= "percent_by_time", 
                                target_dir = get_generic_report_dir("percent_by_time"), 
-                               dt_col = c(#"OnsetDate", 
-                                          "ReportedDate"), 
-                               col_col_nm = c("Disposition", 
-                                              "Ethnicity", 
-                                              "EXPOSURE_CAT", 
-                                              "AgeGroup20", 
+                               dt_col = c("onsetdate_imputed"), 
+                               col_col_nm = c("disposition",
+                                              #"ethnicity", 
+                                              "exposure_cat", 
+                                              "asymptomatic2", 
+                                              "agegroup20", 
                                               #"AgeGroup10", 
-                                              "Asymptomatic", 
                                               #"Indigenous", 
-                                              "Hosp"#, 
+                                              "hospstatus"#, 
                                               #"ICU", 
                                               #"PT"
-                                              )){
+                               )){
   
   if(!get_export_should_write(report_filter= report_filter)){
     print(paste0("Not wrting '",report_filter,"' today."))
