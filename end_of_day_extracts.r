@@ -2222,11 +2222,24 @@ extract_case_data_get_metabase_diff <- function(){
   severity_meta_raw <- metabase_query(metabase_handle, "SELECT * from severity", col_types = cols(.default = col_character()))
   
 
-  cases_meta_raw <- metabase_query(metabase_handle, "SELECT * from cases", col_types = cols(.default = col_character()))
+  symptoms_meta_raw <- metabase_query(metabase_handle, "SELECT * from symptoms", col_types = cols(.default = col_character()))
+  symptomlookup_meta_raw <- metabase_query(metabase_handle, "SELECT * from symptomlookup", col_types = cols(.default = col_character()))
+  
+  symptoms_meta_raw %>% count(symptomvalue, sort = T)
   
   
-  cases_meta_raw %>% count(phacid , sort = T)
-  severity_meta_raw %>% count(phacid , sort = T)
+  symptoms_meta <- 
+    symptoms_meta_raw %>% 
+    left_join(symptomlookup_meta_raw, by = "symptomid") %>% 
+    select(-id, - symptomid) %>% 
+    pivot_wider(names_from = symptomname, values_from = symptomvalue , names_prefix = "sym") %>%
+    rename_all(str_to_lower) %>%
+    rename(asymptomatic := symasymptomatic)
+    
+  
+  
+  #cases_meta_raw %>% count(phacid , sort = T)
+  #severity_meta_raw %>% count(phacid , sort = T)
   
   
   
@@ -2235,8 +2248,9 @@ extract_case_data_get_metabase_diff <- function(){
   cases_meta <- 
     cases_meta_raw %>%
     left_join(severity_meta_raw, by = "phacid") %>% #count(phacid , sort = T)
+    left_join(symptoms_meta, by = "phacid") %>% #count(phacid , sort = T)
     mutate_if(is.character, function(x){if_else(x == "not collected", "", x)})  %>% #count(disposition)
-    mutate(disposition = if_else(disposition == "unknown", "", disposition))  %>% count(disposition)
+    mutate(disposition = if_else(disposition == "unknown", "", disposition))  #%>% count(disposition)
   #cases_meta <- metabase_query(metabase_handle, "SELECT phacid, pt, ptcaseid, sex from cases where sex != 'male' and sex != 'female' and sex != 'unknown'", col_types = cols(.default = col_character()))
   #cases_meta %>% count(sex, pt)
   
