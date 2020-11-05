@@ -22,7 +22,6 @@ library(lubridate)
 library(AzureStor)
 #library(RDCOMClient)
 
-source("make_graphs.r")
 
 
 
@@ -1025,12 +1024,16 @@ make_final_clean_df <- function(df,
   
   
   
-  
-  df[!colnames(df) %in% colnames(df_cleaned)] %>%
+  df2 <- 
+    df[!colnames(df) %in% colnames(df_cleaned)] %>%
     {if(ncol(df_cleaned) > 0) bind_cols(., df_cleaned) else .} %>%
     #select(cols) %>% 
     mutate_if(.predicate = function(x) inherits(x, "POSIXct"), as_date) %>%  
     rename_all(str_to_lower)
+  
+  
+  df2 %>% select(str_to_lower(cols))
+  
   
   # 
   # get_cols_cleaning
@@ -1161,28 +1164,46 @@ get_values_count_summary <- function(con = get_covid_cases_db_con(),
           #   do(head(., n = 9))
           # uvals
         }else{uvals}
-      
-      
-      uvals <- 
-        lapply(strats, function(srtt){
-          sum_nm <- paste0("n_", srtt)
-          frac_nm <- paste0("f_", srtt)
-          
-          uvals %>% group_by_at(srtt) %>% 
-          mutate(!!sum_nm := sum(n, na.rm = T)) %>% ungroup() %>% 
-          mutate(!!frac_nm := n / !!sym(sum_nm))
-        
-        
-          
-        }) %>% reduce(inner_join, by = c("value", "n", strats))
-        
+
       uvals <-
         uvals %>% group_by_at(strats) %>% 
-          mutate(n_all_strats := sum(n, na.rm = T)) %>% ungroup() %>% 
-          mutate(f_all_strats := n / n_all_strats)
+        mutate(n_all_strats := sum(n, na.rm = T)) %>% ungroup() %>% 
+        mutate(f_all_strats := n / n_all_strats) #%>% count(n, sort = T, name = "A")
       
       
-      uvals %>% 
+            
+      
+      uvals_by_strat <- 
+        lapply(strats, function(srtt){
+          sum_nm <- paste0("d_", srtt)
+          num_nm <- paste0("n_", srtt)
+          #sum_nm_all_strats <- paste0("denom_", srtt)
+          frac_nm <- paste0("f_", srtt)
+          
+          uvals %>% 
+            group_by_at(c("value", srtt)) %>% 
+            summarise(!!num_nm := sum(n, na.rm = T)) %>% ungroup() %>%
+            group_by_at(srtt) %>% 
+            mutate(!!sum_nm := sum(!!sym(num_nm), na.rm = T)) %>% ungroup() %>% 
+            mutate(!!frac_nm := !!sym(num_nm) / !!sym(sum_nm))
+          #   mutate(srtt)
+          #             !!sum_nm_all_strats := sum(n_all_strats, na.rm = T)) %>% ungroup() %>% 
+          # mutate(!!frac_nm := !!sym(sum_nm) / !!sym(sum_nm_all_strats))
+          # 
+        
+          
+        }) %>% reduce(inner_join)#, by = c("value", "n", strats))
+      
+      uvals2 <- inner_join(uvals, uvals_by_strat, by = c("value", strats))
+      
+        
+      # uvals <-
+      #   uvals %>% group_by_at(strats) %>% 
+      #     mutate(n_all_strats := sum(n, na.rm = T)) %>% ungroup() %>% 
+      #     mutate(f_all_strats := n / n_all_strats)
+      
+      
+      uvals2 %>% 
         mutate(name = cnm,
                value = as.character(value)) %>%
         return()
@@ -1251,8 +1272,8 @@ get_StatsCan <- function(con = get_covid_cases_db_con(),
 get_DataHub <- function(con = get_covid_cases_db_con(), 
                         df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed")),
                         cols = get_report_cols("DataHub")){
-  
-  df %>% 
+  df2 <- 
+    df %>% 
     mutate(., EpisodeDate = make_EpisodeDate(.)) %>%
     mutate(., Occupation2 = make_Occupation_2(.)) %>%
     mutate(., Healthcare_worker2 = make_healthcare_worker_2(.)) %>%
@@ -1261,9 +1282,48 @@ get_DataHub <- function(con = get_covid_cases_db_con(),
     mutate(., HospStatus = make_hospstatus(.)) %>%
     mutate(., Disposition2 = make_Disposition2(.)) %>%
     mutate(., RecoveryDate2 = make_RecoveryDate2(.)) %>%
-    mutate(., exposure_cat2 = make_exposure_cat2(.)) %>%
-    make_final_clean_df(report_filter = "DataHub", cols = cols)
+    mutate(., exposure_cat2 = make_exposure_cat2(.))#%>%
+    
+    
+    
   
+    
+  pts <- df2 %>% distinct(PT) %>% pull()
+    
+  to_impute <- c("OnsetDate","EpisodeDate")
+  to_impute_from <- c("PHACReportedDate", "ReportedDate", "OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1", "EpisodeDate")
+    
+  imuted_dates <- 
+    map_dfr(pts, function(curr_pt){
+      
+      df_for_impute <-
+        df2 %>% 
+        filter(PT == curr_pt) %>% 
+        select(PHACID,PT,  to_impute, to_impute_from)
+      
+      
+      imuted_dates_pt <- 
+        map_dfc(to_impute, function(c_nm){make_imputed_date(df = df_for_impute, date_col_nm = c_nm) }) %>% 
+        set_names(to_impute) %>%
+        rename_all(function(x){paste0(x, "_imputed")}) %>% 
+        #select_if(function(x) any(!is.na(x))) %>% 
+        #select_if(function(x){sum(is.na(x))/length(x)< 0.5}) %>%
+        bind_cols(df_for_impute %>% select(PHACID), .)
+      
+      print(curr_pt)
+      print(ncol(imuted_dates_pt))
+      return(imuted_dates_pt)
+    })    
+    
+  df3 <- 
+    df2 %>% 
+    left_join(., imuted_dates, by = "PHACID") %>%
+    select(cols, matches("_Imputed")) %>% 
+    #bind_cols(., imuted_dates) %>% 
+    make_final_clean_df(report_filter = "DataHub", cols = cols) 
+  
+  
+  return(df3)
 }
 
 
@@ -1434,7 +1494,7 @@ make_imputed_date <- function(df = get_db_tbl(con = con, tlb_nm = "qry_allcases_
   #df %>% impute_deltas() %>% view()
 
 
-  cols_dts = df %>% select_if(function(x){is(x, class2 = "POSIXct")}) %>% colnames()
+  cols_dts = df %>% select_if(function(x){is(x, class2 = "POSIXct") | is.Date(x)}) %>% colnames()
 
   df2 <-
     bind_cols(df %>% select(!!sym(date_col_nm)),
@@ -2034,7 +2094,7 @@ extract_table_report <- function(df_fun,fn, report_filter, password = NULL, save
       format_headers = TRUE,
       use_zip64 = FALSE
     )
-    AzureStor::upload_blob(container =blob_cont, src = file.path(rappdirs::user_cache_dir(), short_fn), dest = short_fn)
+    AzureStor::upload_blob(container = blob_cont, src = file.path(rappdirs::user_cache_dir(), short_fn), dest = short_fn)
     #TODO:
   }
   
@@ -2220,26 +2280,33 @@ extract_case_data_get_metabase_diff <- function(){
   
   cases_meta_raw <- metabase_query(metabase_handle, "SELECT * from cases", col_types = cols(.default = col_character()))
   severity_meta_raw <- metabase_query(metabase_handle, "SELECT * from severity", col_types = cols(.default = col_character()))
-  
-
+  diagnoses_meta_raw <- metabase_query(metabase_handle, "SELECT * from diagnoses", col_types = cols(.default = col_character()))
+  diagnosislookup_meta_raw <- metabase_query(metabase_handle, "SELECT * from diagnosislookup", col_types = cols(.default = col_character()))
   symptoms_meta_raw <- metabase_query(metabase_handle, "SELECT * from symptoms", col_types = cols(.default = col_character()))
   symptomlookup_meta_raw <- metabase_query(metabase_handle, "SELECT * from symptomlookup", col_types = cols(.default = col_character()))
   
-  symptoms_meta_raw %>% count(symptomvalue, sort = T)
+  diagnoses_meta <- 
+    diagnoses_meta_raw %>% 
+    left_join(diagnosislookup_meta_raw, by = "diagnosisid") %>% 
+    select(-id, -diagnosisid) %>% 
+    pivot_wider(names_from = diagnosisname, values_from = diagnosisvalue, names_prefix = "Dx") %>% 
+    setNames(., str_to_lower( colnames(.))) %>% 
+    clean_names()
   
   
   symptoms_meta <- 
     symptoms_meta_raw %>% 
     left_join(symptomlookup_meta_raw, by = "symptomid") %>% 
-    select(-id, - symptomid) %>% 
-    pivot_wider(names_from = symptomname, values_from = symptomvalue , names_prefix = "sym") %>%
-    rename_all(str_to_lower) %>%
-    rename(asymptomatic := symasymptomatic)
-    
+    select(-id, -symptomid) %>% 
+    pivot_wider(names_from = symptomname, values_from = symptomvalue, names_prefix = "sym") %>%
+    setNames(., str_to_lower( colnames(.))) %>% 
+    rename(asymptomatic := symasymptomatic) %>% 
+    clean_names()
   
   
-  #cases_meta_raw %>% count(phacid , sort = T)
-  #severity_meta_raw %>% count(phacid , sort = T)
+  
+  cases_meta_raw %>% count(phacid , sort = T)
+  severity_meta_raw %>% count(phacid , sort = T)
   
   
   
@@ -2248,9 +2315,10 @@ extract_case_data_get_metabase_diff <- function(){
   cases_meta <- 
     cases_meta_raw %>%
     left_join(severity_meta_raw, by = "phacid") %>% #count(phacid , sort = T)
-    left_join(symptoms_meta, by = "phacid") %>% #count(phacid , sort = T)
+    left_join(symptoms_meta, by = "phacid") %>%
+    left_join(diagnoses_meta, by = "phacid") %>%
     mutate_if(is.character, function(x){if_else(x == "not collected", "", x)})  %>% #count(disposition)
-    mutate(disposition = if_else(disposition == "unknown", "", disposition))  #%>% count(disposition)
+    mutate(disposition = if_else(disposition == "unknown", "", disposition))#  %>% count(disposition)
   #cases_meta <- metabase_query(metabase_handle, "SELECT phacid, pt, ptcaseid, sex from cases where sex != 'male' and sex != 'female' and sex != 'unknown'", col_types = cols(.default = col_character()))
   #cases_meta %>% count(sex, pt)
   
