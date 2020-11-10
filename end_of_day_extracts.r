@@ -471,7 +471,7 @@ get_cols_2_clean <- function(in_dir = DIR_OF_INPUT,
     filter(clean_str == YES_STR) %>%
     pull(col_nm)
 }
-str_to_upper
+#str_to_upper
 
 str_to_same <- function(x){
   #'
@@ -934,7 +934,7 @@ make_RecoveryDate2 <- function(df){
     df %>% mutate(., Disposition2 = make_Disposition2(.)) %>% select(RecoveryDate, Disposition2)
   }
   
-  df2 %>% mutate(RecoveryDate2 = as.Date(ifelse(Disposition2 == "Recovered", RecoveryDate, NA ))) %>% pull(RecoveryDate2)
+  df2 %>% mutate(RecoveryDate2 = if_else(Disposition2 == "Recovered", RecoveryDate, as.Date(NA, "1970-01-01") )) %>% pull(RecoveryDate2)
 }
 
 
@@ -1288,6 +1288,7 @@ get_DataHub <- function(con = get_covid_cases_db_con(),
     
   
     
+  
   pts <- df2 %>% distinct(PT) %>% pull()
     
   to_impute <- c("OnsetDate","EpisodeDate")
@@ -1519,13 +1520,64 @@ make_imputed_date <- function(df = get_db_tbl(con = con, tlb_nm = "qry_allcases_
                    as.Date(NA)
            )
       )  
-      print(x %>% is.na() %>% sum() )
+      #print(x %>% is.na() %>% sum() )
     
   }
   
   
   return(x) 
 }
+# 
+# library(feather)
+# 
+# dir <- DIR_OF_HPOC_ROOT
+# 
+# AZURE_KEY = keyring::key_get(report_filter)
+# blob_cont <- blob_container(endpoint = "https://storphacdpihaadv01.blob.core.windows.net/hswerdfe", key=AZURE_KEY)
+# 
+# 
+# 
+# 
+# 
+# tic <- Sys.time()
+# short_fn <- "qry_allcases_testing_2.xlsx"
+# writexl::write_xlsx(x = df,
+#                     path = file.path(rappdirs::user_cache_dir(), short_fn),
+#                     col_names = TRUE,
+#                     format_headers = TRUE,
+#                     use_zip64 = FALSE
+# )
+# AzureStor::upload_blob(container = blob_cont, src = file.path(rappdirs::user_cache_dir(), short_fn), dest = short_fn)
+# 
+# toc <- Sys.time()
+# print (paste0("xlsx = ",  format(toc - tic)))
+# 
+# 
+# tic <- Sys.time()
+# short_fn <- "qry_allcases_testing_2.csv"
+# df %>% write_csv(file.path(rappdirs::user_cache_dir(), short_fn))
+# AzureStor::upload_blob(container = blob_cont, src = file.path(rappdirs::user_cache_dir(), short_fn), dest = short_fn)
+# toc <- Sys.time()
+# print (paste0("csv = ",  format(toc - tic)))
+# 
+# 
+# tic <- Sys.time()
+# short_fn <- "qry_allcases_testing_2.rds"
+# df %>% saveRDS(file.path(rappdirs::user_cache_dir(), short_fn))
+# AzureStor::upload_blob(container = blob_cont, src = file.path(rappdirs::user_cache_dir(), short_fn), dest = short_fn)
+# toc <- Sys.time()
+# 
+# print (paste0("rds = ",  format(toc - tic)))
+# 
+# 
+# tic <- Sys.time()
+# short_fn <- "qry_allcases_testing_2.feather"
+# df %>% write_feather(file.path(rappdirs::user_cache_dir(), short_fn))
+# AzureStor::upload_blob(container = blob_cont, src = file.path(rappdirs::user_cache_dir(), short_fn), dest = short_fn)
+# toc <- Sys.time()
+# print (paste0("feather = ",  format(toc - tic)))
+
+
 
 
 get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(), 
@@ -1567,8 +1619,8 @@ get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(),
         #select_if(function(x){sum(is.na(x))/length(x)< 0.5}) %>%
         bind_cols(df_for_impute %>% select(PHACID), .)
       
-      print(curr_pt)
-      print(ncol(imuted_dates_pt))
+      #print(curr_pt)
+      #print(ncol(imuted_dates_pt))
       return(imuted_dates_pt)
     })
   #df %>% pull(OnsetDate) %>% is.na() %>% sum()
@@ -2045,9 +2097,32 @@ get_db_error_report_by_case <- function(con = get_covid_cases_db_con(), a_tbl = 
   return(ret_val)
 }
 
+save_file_as_excel_and_rds_file <- function(x, path, ...){
+  
+  library(tools)
+  rm_ext <- paste0(".",tools::file_ext(path), "$")
+  dir <- dirname(path)
+  base_nm <- basename(path)
+  basbasename <- str_remove(base_nm, rm_ext)
+  
+  writexl::write_xlsx(x = x, 
+                      path = file.path(dir , paste0(basbasename, ".xlsx")),
+                      ...)
+  saveRDS(object = x ,file = file.path(dir, paste0(basbasename, ".rds")))
+  
+  return(T) 
+}
 
 
-extract_table_report <- function(df_fun,fn, report_filter, password = NULL, save_type = "file", dir = dirname(fn), short_fn = basename(fn), ...){
+extract_table_report <- function(df_fun,
+                                 fn, 
+                                 report_filter, 
+                                 password = NULL, 
+                                 save_type = "file", 
+                                 dir = dirname(fn), 
+                                 short_fn = basename(fn), 
+                                 saving_func = writexl::write_xlsx,
+                                 ...){
   
   if(!get_export_should_write(report_filter= report_filter)){
     print(paste0("Not wrting '",report_filter,"' today."))
@@ -2071,7 +2146,7 @@ extract_table_report <- function(df_fun,fn, report_filter, password = NULL, save
     if ( ! dir.exists(target_dir)){
       dir.create(target_dir, recursive = T)
     }
-      writexl::write_xlsx(x = df ,#%>% head(50000),
+      saving_func(x = df ,#%>% head(50000),
                           path = fn,
                           col_names = TRUE,
                           format_headers = TRUE,
@@ -2088,13 +2163,13 @@ extract_table_report <- function(df_fun,fn, report_filter, password = NULL, save
    #todo: 
     AZURE_KEY = keyring::key_get(report_filter)
     blob_cont <- blob_container(endpoint = dir, key=AZURE_KEY)
-    writexl::write_xlsx(x = df,
-      path = file.path(rappdirs::user_cache_dir(), short_fn),
-      col_names = TRUE,
-      format_headers = TRUE,
-      use_zip64 = FALSE
-    )
-    AzureStor::upload_blob(container = blob_cont, src = file.path(rappdirs::user_cache_dir(), short_fn), dest = short_fn)
+    saving_func(x = df,
+        path = file.path(rappdirs::user_cache_dir(), short_fn),
+        col_names = TRUE,
+        format_headers = TRUE,
+        use_zip64 = FALSE
+      )
+    AzureStor::upload_blob(container = blob_cont, src = file.path(rappdirs::user_cache_dir(), short_fn), dest = paste0("data/",short_fn))
     #TODO:
   }
   
@@ -2138,7 +2213,8 @@ extract_case_data_domestic_epi <- function(){
                        fn = path.expand( file.path(get_report_dir("qry_allcases"), 
                                                    paste0("qry_allcases "  , format(Sys.Date() ,"%m-%d-%Y"),"_NEW_FORMAT.xlsx")#, "_SEMI_AUTOMATED.xlsx")
                        )),
-                       report_filter = "qry_allcases"
+                       report_filter = "qry_allcases", 
+                       saving_func = save_file_as_excel_and_rds_file
   )
 }
 
@@ -2550,7 +2626,7 @@ backup_db <- function(full_fn = file.path(DIR_OF_DB_2_BACK_UP, NAME_DB_2_BACK_UP
 #       mutate(varName = curr_col) %>%
 #       mutate(Approved = "")  %>%
 #       rename(new_value := best_value) %>%
-#       select(Approved, PHACReportedDate, PHACID, PTCaseID, PT, varName, old_value,new_value)
+#       selecextract_case_data_domestic_epit(Approved, PHACReportedDate, PHACID, PTCaseID, PT, varName, old_value,new_value)
 # 
 #     return(ret_val_2)
 #   })
@@ -2564,6 +2640,7 @@ do_end_of_day_tasks <- function(){
   extract_case_db_errs()
   extract_case_data_get_StatsCan()
   extract_case_data_domestic_epi()
+  
   extract_case_data_domestic_survelance()
   extract_case_data_get_HCDaily()
   extract_case_data_get_DataHub()
@@ -2577,10 +2654,10 @@ do_end_of_day_tasks <- function(){
   get_email_sentence()
   
   extract_case_data_get_metabase_diff()
-  extract_positives_by_age_prov()
-  extract_epi_curves()
-  extract_percent_by_time()
+  # extract_positives_by_age_prov()
+  # extract_epi_curves()
+  # extract_percent_by_time()
   
 }
-do_end_of_day_tasks()
+#do_end_of_day_tasks()
 
