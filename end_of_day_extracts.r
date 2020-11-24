@@ -836,15 +836,15 @@ make_sex_2 <- function(df){
 make_Occupation_2 <- function(df){
   #' return vector indicating occupation_2 after cleaning
   #'
-  #' @param df must have all of the following columns "Occupation_other"
+  #' @param df must have all of the following columns "Occupationspec"
   #'  
   #'  
   #'  
   df %>% 
-    select(occupation_other)  %>% 
-    mutate(occupation_other = clean_str(occupation_other)) %>% 
-    mutate(occupation_other2 = if_else(occupation_other == "", NOT_STATED_STR, occupation_other)) %>% #count(Occupation_Other2, sort = T) %>% 
-    pull(occupation_other2)
+    select(occupationspec)  %>% 
+    mutate(occupationspec = clean_str(occupationspec)) %>% 
+    mutate(occupationspec2 = if_else(occupationspec == "", NOT_STATED_STR, occupationspec)) %>% #count(occupationspec2, sort = T) %>% 
+    pull(occupationspec2)
 }
 
 
@@ -1250,7 +1250,7 @@ get_StatsCan <- function(con = get_covid_cases_db_con(),
   #          RecoveryDate = make_RecoveryDate2(.),
   #          exposure_cat2 = make_exposure_cat2(.),
   #          RecoveryDate2 = make_RecoveryDate2(.),
-  #          Occupation_other2 = make_Occupation_2(.)
+  #          Occupationspec2 = make_Occupation_2(.)
   #          
   #   ) %>% 
   #   rename(Agegroup10 := AgeGroup10  ,age := Age)
@@ -1717,7 +1717,7 @@ get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(),
   #     df %>% 
   #     rename(agegroup10 := AgeGroup10, 
   #            agegroup20 := AgeGroup20, 
-  #            Occupation_Other := Occupation_other,
+  #            Occupationspec := Occupationspec,
   #            Location := LOCATION) %>%
   #     select(cols)  
   #   
@@ -2343,8 +2343,8 @@ extract_case_data_get_metabase_diff <- function(){
   }
   
   library(metabaser)
-  
-  META_BASE_HRE_URL <- "https://discover-evh1.hres.ca/api"
+  META_BASE_HRE_URL <- "https://discover-metabase.hres.ca/api"
+  #META_BASE_HRE_URL <- "https://discover-evh1.hres.ca/api"
   META_BASE_HRE_CASES_DB_ID <- 2
   META_BASE_HRE_USER_NAME <- keyring::key_get("username_for_meta_base_on_HRE") #"howard.swerdfeger@canada.ca"
   META_BASE_HRE_PASSWORD <- keyring::key_get("password_for_meta_base_on_HRE")
@@ -2353,6 +2353,108 @@ extract_case_data_get_metabase_diff <- function(){
                                     database_id = META_BASE_HRE_CASES_DB_ID,
                                     username = META_BASE_HRE_USER_NAME,
                                     password = META_BASE_HRE_PASSWORD)
+#   
+#   
+#   qry_allcases_web_v2
+#   
+#   
+#   
+#   
+#   sql_str <- 
+#   "select cases.phacid,
+#     cases.pt,
+#     case when onsetdate is not null then onsetdate when min(labspecimencollectiondate) is not null then min(labspecimencollectiondate) when min(labtestresultdate) is not null then min(labtestresultdate) end as episodedate,
+#     cases.classification,
+# 	case when cases.sex = '' or cases.sex is null then 'not stated' else sex end as sex2,
+# 	case when (age <= 19 or agegrouping = '0-19') then '0 to 19'  
+# 		when (age <= 29 or agegrouping = '20-29') then '20 to 29' 
+# 		when (age <= 39 or agegrouping = '30-39') then '30 to 39' 
+# 		when (age <= 49 or agegrouping = '40-49') then '40 to 49' 
+# 		when (age <= 59 or agegrouping = '50-59') then '50 to 59' 
+# 		when (age <= 69 or agegrouping = '60-69') then '60 to 69' 
+# 		when (age <= 79 or agegrouping = '70-79') then '70 to 79' 
+# 		when (age >= 80 or agegrouping = '80+') then '80 or plus' 
+# 		else 'unknown' end as agegroup10,
+#        cases.age,
+#        case when occupation is null or occupation = '' then 'not stated' else occupation end as occupation2,
+#        case when occupationhcw is null or occupationhcw = '' then 'not stated' else occupationhcw end as healthcare_worker2,
+#        case when ltc_resident is null or ltc_resident = '' then 'not stated' else ltc_resident end as ltc_resident2,
+# 	case when cases.phacid in (
+# 		select phacid
+# 		from symptoms
+# 		where symptomid > 1 and symptomid < 35 and symptomvalue = 'yes'
+# 		) then 'no'
+# 		when cases.phacid not in (
+# 			select phacid
+# 			from symptoms
+# 			where symptomid = 1
+# 			) then 'unknown' 
+# 		else (
+# 			select symptomvalue
+# 			from symptoms
+# 			where symptomid = 1 and cases.phacid = symptoms.phacid
+# 			) end as asymptomatic2,
+#        cases.onsetdate,
+#        max(case when symptomid = 2 then symptomvalue end) symcough,
+#        max(case when symptomid = 3 then symptomvalue end) symfever,
+#        max(case when symptomid = 4 then symptomvalue end) symchills,
+#        max(case when symptomid = 5 then symptomvalue end) symsorethroat,
+#        max(case when symptomid = 6 then symptomvalue end) symrunnynose,
+#        max(case when symptomid = 7 then symptomvalue end) symshortnessofbreath,
+#        max(case when symptomid = 8 then symptomvalue end) symnausea,
+#        max(case when symptomid = 9 then symptomvalue end) symheadache,
+#        max(case when symptomid = 10 then symptomvalue end) symweakness,
+#        max(case when symptomid = 11 then symptomvalue end) sympain,
+#        max(case when symptomid = 12 then symptomvalue end) symirritability,
+#        max(case when symptomid = 13 then symptomvalue end) symdiarrhea,
+#        max(case when symptomid = 35 then symptomvalue end) symother,
+#        max(case when symptomid = 35 then symptomspec end) symotherspec,
+# 	case when icu = 'yes' or icustartdate is not null or mechanicalvent = 'yes' or ventstartdate is not null then 'hospitalized - icu' 
+# 		when hosp = 'yes' or hospstartdate is not null then 'hospitalized - non-icu'
+# 		when hosp = 'no' then 'not hospitalized'
+# 		else 'unknown' end as hospstatus,
+#     case when disposition = 'ill' then 'stable'
+# 		when disposition in ('not reported', 'other', 'pending', '', null) then 'unknown'
+# 		when disposition = 'self isolation' then 'stable'
+# 		when disposition = 'recovered' then 'recovered'
+# 		when disposition = 'deceased' then 'deceased' else disposition end as disposition2,
+#     case when disposition = 'recovered' then recoverydate else null end as recoverydate2,
+# 	case when cases.phacid in (
+# 			select phacid
+# 			from travel
+# 			where travel_international_loc not in ('canada', 'unclassifiable', 'pei', 'not collected') 
+# 		) or cases.pt = 'repatriate' then 'international travel' 
+# 		when exposures.closecontacttravel = 'yes' then 'domestic acquisition'
+# 		when exposures.closecontactcase = 'yes' then 'domestic acquisition'
+# 		when closecontactcase is not null or cases.phacid in (
+# 			select phacid
+# 			from travel
+# 			where travel_international_loc in ('canada') 
+# 			) or exposures.travel not in ('', 'yes', null) then 'domestic acquisition'
+# 		when cases.pt = 'on' then 'information pending' end as exposure_cat2
+# from 
+# 		cases
+#     left join
+#         symptoms on cases.phacid = symptoms.phacid
+#     left join
+#         severity on cases.phacid = severity.phacid
+#     left join
+#         exposures on cases.phacid = exposures.phacid
+#     left join
+#         lab on cases.phacid = lab.phacid
+# where cases.classification = 'confirmed'
+# group by cases.phacid, severity.phacid, exposures.phacid;"
+#   
+#   
+#   
+#   tmp2 <- metabase_query(metabase_handle, sql_str, col_types = cols(.default = col_character()))
+#   
+#   tmp <- metabase_query(metabase_handle, "select * from all_cases", col_types = cols(.default = col_character()))
+# 
+#   
+  
+    
+  cases_meta_raw <- metabase_query(metabase_handle, "SELECT * from cases", col_types = cols(.default = col_character()))
   
   cases_meta_raw <- metabase_query(metabase_handle, "SELECT * from cases", col_types = cols(.default = col_character()))
   severity_meta_raw <- metabase_query(metabase_handle, "SELECT * from severity", col_types = cols(.default = col_character()))
@@ -2659,5 +2761,5 @@ do_end_of_day_tasks <- function(){
   # extract_percent_by_time()
   
 }
-#do_end_of_day_tasks()
+do_end_of_day_tasks()
 
