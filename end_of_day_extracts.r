@@ -21,6 +21,13 @@ library(readxl)
 library(lubridate)
 library(AzureStor)
 #library(RDCOMClient)
+library(metabaser)
+
+
+META_BASE_HRE_URL <- "https://discover-metabase.hres.ca/api"
+META_BASE_HRE_CASES_DB_ID <- 2
+META_BASE_HRE_USER_NAME <- keyring::key_get("username_for_meta_base_on_HRE") #"howard.swerdfeger@canada.ca"
+META_BASE_HRE_PASSWORD <- keyring::key_get("password_for_meta_base_on_HRE")
 
 
 
@@ -716,7 +723,6 @@ make_Comorbidity_all <- function(df, sym_col_nm_patern = "^RF.*(?<!Spec)$"){
     mutate(value_y = (value == YES_STR)*1.0, 
            value_n = (value == NO_STR)*1.0) %>% 
     group_by(PHACID) %>% summarise(ComorbidityYes = ifelse(sum(value_y) >= 1, YES_STR, ""),
-                                   ComorbidityNo = ifelse(sum(value_n) >= n(), NO_STR, ""),
                                    CountRF = sum(value_y)
     ) %>% 
     mutate(Comorbidity = if_else(ComorbidityYes == YES_STR, 
@@ -1054,9 +1060,25 @@ make_final_clean_df <- function(df,
 }
 
 
+get_WHO <- function(con = get_metabase_con()#, 
+                    #df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed")),
+                    #cols = get_report_cols("HCDaily")
+){
+  #' reuturns Data frame for the HCDaily report
+  #'
+  #'
+  
+  tic <- Sys.time()
+  all_cases <- metabase_query(con, "select * from who;", col_types = cols(.default = col_character()))
+  toc <- Sys.time()
+  print(paste0("discover data_hub took ",format(toc - tic)))
+  return(all_cases)  
+  
+}
 
 
-get_WHO <- function(con = get_covid_cases_db_con(), 
+
+get_WHO_OLD <- function(con = get_covid_cases_db_con(), 
                     #df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed", "Probable")),
                     cols = get_report_cols("WHO")
 ){
@@ -1067,7 +1089,7 @@ get_WHO <- function(con = get_covid_cases_db_con(),
   
 }
 
-get_email_sentence <- function(con = get_covid_cases_db_con(),
+get_email_sentence_OLD <- function(con = get_covid_cases_db_con(),
                                df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed", "Probable"))
 ){
   
@@ -1076,6 +1098,23 @@ get_email_sentence <- function(con = get_covid_cases_db_con(),
   print(msg)
   return(msg)
 }
+
+
+get_email_sentence <- function(con = get_metabase_con()
+                               ){
+  
+  
+  nc <- metabase_query(con, "select count(*) from all_cases;", col_types = cols(.default = col_character())) %>% pull()
+  nd <- metabase_query(con, "select count(*) from all_cases WHERE coviddeath ='yes';", col_types = cols(.default = col_character())) %>% pull()
+  msg <- paste0("Total Confirmed & Probable cases in database on ",Sys.Date()," EOD is '", format(nc, big.mark = ","),"' while Deaths are '", 
+                nd %>% format(big.mark = ",") ,"'") 
+  print(msg)
+  return(msg)
+}
+
+
+
+
 
 
 get_ijn <- function(con = get_covid_cases_db_con(),
@@ -1102,7 +1141,7 @@ get_ijn <- function(con = get_covid_cases_db_con(),
 }
 
 
-get_values_count_summary <- function(con = get_covid_cases_db_con(),
+get_values_count_summary <- function(con = get_metabase_con(),
                                      a_tbl = get_case_data_domestic_epi(con = con),
                                      strats = c("pt", "agegroup20"),
                                      MAX_NUM_unique_values_ALLOWED = 60#,
@@ -1114,8 +1153,9 @@ get_values_count_summary <- function(con = get_covid_cases_db_con(),
   
   a_tbl_mn <- 
     a_tbl %>% 
-    select(matches("Date")) %>%
-    select_if(is.Date) %>%
+    select(matches("date")) %>% mutate(detectedatentry = as.Date(detectedatentry))
+    mutate_all(as.Date, tryFormats = "%Y-%m-%d") %>% 
+    #select_if(is.Date) %>%
     mutate_all(lubridate::month) %>% 
     rename_all(paste0, "_month")
   
@@ -1224,8 +1264,21 @@ get_values_count_summary <- function(con = get_covid_cases_db_con(),
 
 
 
+get_StatsCan <- function(con = get_metabase_con()){
+  #' Return df for the statcan report
+  #'
+  #'
+  
+  
+  tic <- Sys.time()
+  all_cases <- metabase_query(con, "select * from statscan;", col_types = cols(.default = col_character()))
+  toc <- Sys.time()
+  print(paste0("discover statscan took ",format(toc - tic)))
+  return(all_cases)  
+  
+}
 
-get_StatsCan <- function(con = get_covid_cases_db_con(), 
+get_StatsCan_OLD <- function(con = get_covid_cases_db_con(), 
                          #df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed")),
                          cols = get_report_cols("STATCAN")){
   #' Return df for the statcan report
@@ -1237,39 +1290,12 @@ get_StatsCan <- function(con = get_covid_cases_db_con(),
   df %>% 
     make_final_clean_df(report_filter = "STATCAN", cols = cols)
   
-  # df2 <- 
-  #   df %>% 
-  #   mutate(., EpisodeDate = make_EpisodeDate(.),
-  #          sex2 = make_sex_2(.),
-  #          Occupation2 = make_Occupation_2(.),
-  #          Healthcare_worker2 = make_healthcare_worker_2(.),
-  #          LTC_Resident2 = make_LTC_Resident_2(.),
-  #          OnsetDate2 = make_OnsetDate2(.),
-  #          HospStatus = make_hospstatus(.),
-  #          Disposition2 = make_Disposition2(.),
-  #          RecoveryDate = make_RecoveryDate2(.),
-  #          exposure_cat2 = make_exposure_cat2(.),
-  #          RecoveryDate2 = make_RecoveryDate2(.),
-  #          Occupationspec2 = make_Occupation_2(.)
-  #          
-  #   ) %>% 
-  #   rename(Agegroup10 := AgeGroup10  ,age := Age)
-  # 
-  # df3<- 
-  #   df2 %>%   
-  #   make_Asymptomatic_all() %>% 
-  #   select(PHACID, Asymptomatic2) %>% 
-  #   left_join(df2, ., by = "PHACID") %>%   
-  #   make_final_clean_df(report_filter = "STATCAN", cols = cols)
-  # 
-  # return(df3)
-  
-  
+ 
   
   
 }
 
-get_DataHub <- function(con = get_covid_cases_db_con(), 
+get_DataHub_OLD <- function(con = get_covid_cases_db_con(), 
                         df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed")),
                         cols = get_report_cols("DataHub")){
   df2 <- 
@@ -1328,16 +1354,47 @@ get_DataHub <- function(con = get_covid_cases_db_con(),
 }
 
 
-get_HCDaily <- function(con = get_covid_cases_db_con(), 
+
+
+get_DataHub <- function(con = get_metabase_con()#, 
                         #df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed")),
-                        cols = get_report_cols("HCDaily")){
+                        #cols = get_report_cols("HCDaily")
+){
   #' reuturns Data frame for the HCDaily report
   #'
   #'
   
-  df <- get_db_tbl(con = con, tlb_nm = "qry_HCDaily")#, force_refresh = T)
-  df %>% 
-    make_final_clean_df(report_filter = "HCDaily", cols = cols)
+  tic <- Sys.time()
+  all_cases <- metabase_query(con, "select * from data_hub;", col_types = cols(.default = col_character()))
+  toc <- Sys.time()
+  print(paste0("discover data_hub took ",format(toc - tic)))
+  return(all_cases)  
+  
+}
+
+get_HCDaily <- function(con = get_metabase_con()#, 
+                        #df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Confirmed")),
+                        #cols = get_report_cols("HCDaily")
+                        ){
+  #' reuturns Data frame for the HCDaily report
+  #'
+  #'
+  
+  
+  
+  
+  
+  tic <- Sys.time()
+  all_cases <- metabase_query(con, "select * from data_hub;", col_types = cols(.default = col_character())) %>% select(-pt)
+  toc <- Sys.time()
+  print(paste0("discover data_hub took ",format(toc - tic)))
+  
+  
+  return(all_cases)  
+  
+  # df <- get_db_tbl(con = con, tlb_nm = "qry_HCDaily")#, force_refresh = T)
+  # df %>% 
+  #   make_final_clean_df(report_filter = "HCDaily", cols = cols)
   
   
   
@@ -1424,7 +1481,25 @@ get_completness_analysis <- function(con = get_covid_cases_db_con(),
 }
 
 
-get_domestic_survelance <- function(con = get_covid_cases_db_con(), 
+get_domestic_survelance <- function(con = get_metabase_con()
+                                   ){
+  #' returns Data frame for the Domestic survelance report
+
+  
+  
+  
+  
+  tic <- Sys.time()
+  all_cases <- metabase_query(con, "select * from modelling_data;", col_types = cols(.default = col_character()))
+  toc <- Sys.time()
+  print(paste0("discover modelling_data took ",format(toc - tic)))
+  
+  
+  return(all_cases)
+} 
+
+
+get_domestic_survelance_OLD <- function(con = get_covid_cases_db_con(), 
                                     #df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Probable", "Confirmed")),
                                     #countries_tbl = get_db_tbl(con = con, tlb_nm = "Travel_Countries") %>% select(PHACID, ExposureCountry),
                                     cols = get_report_cols("Domestic surveillance")){
@@ -1579,8 +1654,22 @@ make_imputed_date <- function(df = get_db_tbl(con = con, tlb_nm = "qry_allcases_
 
 
 
+get_metabase_con <- function(base_url = META_BASE_HRE_URL,
+                              database_id = META_BASE_HRE_CASES_DB_ID,
+                              username = META_BASE_HRE_USER_NAME,
+                              password = META_BASE_HRE_PASSWORD)
+{
+    metabase_login(base_url = base_url,
+                                    database_id = database_id,
+                                    username = username,
+                                    password = password)  
+}
+  
 
-get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(), 
+
+
+
+get_case_data_web_epi <- function(con = get_metabase_con(), 
                                        #df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Probable", "Confirmed")),
                                        #countries_tbl = get_db_tbl(con = con, tlb_nm = "Travel_Countries") %>% select(PHACID, ExposureCountry) ,
                                        cols = get_report_cols("qry_allcases")
@@ -1589,51 +1678,88 @@ get_case_data_domestic_epi <- function(con = get_covid_cases_db_con(),
   #' return Dataframe with Query all cases in it
   #' 
   #' 
-  if (! is.null(get_db_tbl_IN_MEM_CACHE[["get_case_data_domestic_epi"]])){
-    return(get_db_tbl_IN_MEM_CACHE[["get_case_data_domestic_epi"]])
-  }
+  # if (! is.null(get_db_tbl_IN_MEM_CACHE[["get_case_data_domestic_epi"]])){
+  #   return(get_db_tbl_IN_MEM_CACHE[["get_case_data_domestic_epi"]])
+  # }
+  # 
   
   
-  df <- get_db_tbl(con = con, tlb_nm = "qry_allcases_with_Intl_Travel_Exposure")#, force_refresh = T)
   
-  pts <- df %>% distinct(PT) %>% pull()
-  
-  
-  to_impute <- c("PHACReportedDate", "ReportedDate", "OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1", "EpisodeDate")
-  
-  
-  imuted_dates <- 
-    map_dfr(pts, function(curr_pt){
-      
-      df_for_impute <-
-      df %>% 
-        filter(PT == curr_pt) %>% 
-        select(PHACID,PT,  to_impute)
-      
-      
-      imuted_dates_pt <- 
-        map_dfc(to_impute, function(c_nm){make_imputed_date(df = df_for_impute, date_col_nm = c_nm) }) %>% 
-        set_names(to_impute) %>%
-        rename_all(function(x){paste0(x, "_imputed")}) %>% 
-        #select_if(function(x) any(!is.na(x))) %>% 
-        #select_if(function(x){sum(is.na(x))/length(x)< 0.5}) %>%
-        bind_cols(df_for_impute %>% select(PHACID), .)
-      
-      #print(curr_pt)
-      #print(ncol(imuted_dates_pt))
-      return(imuted_dates_pt)
-    })
-  #df %>% pull(OnsetDate) %>% is.na() %>% sum()
-  df2 <- 
-  df %>% 
-    left_join(., imuted_dates, by = "PHACID") %>%
-    #bind_cols(., imuted_dates) %>% 
-    make_final_clean_df(report_filter = "qry_allcases", cols = cols)
+  tic <- Sys.time()
+  all_cases <- metabase_query(con, "select * from all_cases_web;", col_types = cols(.default = col_character()))
+  toc <- Sys.time()
+  print(paste0("discover all_cases took ",format(toc - tic)))
   
   
-  get_db_tbl_IN_MEM_CACHE[["get_case_data_domestic_epi"]]  <<- df2
-  #df2 %>% select(pt, episodedate, episodedate_imputed) %>% filter(pt == "mb") %>% filter(is.na(episodedate))
-  return(df2)
+  return(all_cases)
+}
+
+
+
+get_case_data_domestic_epi <- function(con = get_metabase_con(), 
+                                       #df = get_flat_case_tbl(con = con) %>% filter(Classification %in% c("Probable", "Confirmed")),
+                                       #countries_tbl = get_db_tbl(con = con, tlb_nm = "Travel_Countries") %>% select(PHACID, ExposureCountry) ,
+                                       cols = get_report_cols("qry_allcases")
+                                       
+){
+  #' return Dataframe with Query all cases in it
+  #' 
+  #' 
+  # if (! is.null(get_db_tbl_IN_MEM_CACHE[["get_case_data_domestic_epi"]])){
+  #   return(get_db_tbl_IN_MEM_CACHE[["get_case_data_domestic_epi"]])
+  # }
+  # 
+
+  
+  
+  tic <- Sys.time()
+  all_cases <- metabase_query(con, "select * from all_cases;", col_types = cols(.default = col_character()))
+  toc <- Sys.time()
+  print(paste0("discover all_cases took ",format(toc - tic)))
+  
+  
+  return(all_cases)
+  
+  # df <- get_db_tbl(con = con, tlb_nm = "qry_allcases_with_Intl_Travel_Exposure")#, force_refresh = T)
+  # 
+  # pts <- df %>% distinct(PT) %>% pull()
+  # 
+  # 
+  # to_impute <- c("PHACReportedDate", "ReportedDate", "OnsetDate", "LabSpecimenCollectionDate1", "LabTestResultDate1", "EpisodeDate")
+  # 
+  # 
+  # imuted_dates <- 
+  #   map_dfr(pts, function(curr_pt){
+  #     
+  #     df_for_impute <-
+  #     df %>% 
+  #       filter(PT == curr_pt) %>% 
+  #       select(PHACID,PT,  to_impute)
+  #     
+  #     
+  #     imuted_dates_pt <- 
+  #       map_dfc(to_impute, function(c_nm){make_imputed_date(df = df_for_impute, date_col_nm = c_nm) }) %>% 
+  #       set_names(to_impute) %>%
+  #       rename_all(function(x){paste0(x, "_imputed")}) %>% 
+  #       #select_if(function(x) any(!is.na(x))) %>% 
+  #       #select_if(function(x){sum(is.na(x))/length(x)< 0.5}) %>%
+  #       bind_cols(df_for_impute %>% select(PHACID), .)
+  #     
+  #     #print(curr_pt)
+  #     #print(ncol(imuted_dates_pt))
+  #     return(imuted_dates_pt)
+  #   })
+  # #df %>% pull(OnsetDate) %>% is.na() %>% sum()
+  # df2 <- 
+  # df %>% 
+  #   left_join(., imuted_dates, by = "PHACID") %>%
+  #   #bind_cols(., imuted_dates) %>% 
+  #   make_final_clean_df(report_filter = "qry_allcases", cols = cols)
+  # 
+  # 
+  # get_db_tbl_IN_MEM_CACHE[["get_case_data_domestic_epi"]]  <<- df2
+  # #df2 %>% select(pt, episodedate, episodedate_imputed) %>% filter(pt == "mb") %>% filter(is.na(episodedate))
+  # return(df2)
  
   
   #   
@@ -2105,6 +2231,8 @@ save_file_as_excel_and_rds_file <- function(x, path, ...){
   base_nm <- basename(path)
   basbasename <- str_remove(base_nm, rm_ext)
   
+
+  
   writexl::write_xlsx(x = x, 
                       path = file.path(dir , paste0(basbasename, ".xlsx")),
                       ...)
@@ -2112,6 +2240,30 @@ save_file_as_excel_and_rds_file <- function(x, path, ...){
   
   return(T) 
 }
+
+
+save_file_as_sqlite_xlsx_and_rds_file <- function(x, path, ...){
+  library(tools)
+  rm_ext <- paste0(".",tools::file_ext(path), "$")
+  dir <- dirname(path)
+  base_nm <- basename(path)
+  basbasename <- str_remove(base_nm, rm_ext)
+  
+  
+  conn <- dbConnect(RSQLite::SQLite(), file.path(dir, paste0(basbasename, ".db")))
+  conn <- dbConnect(RSQLite::SQLite(), file.path(dir, paste0(basbasename, ".db")))
+  dbWriteTable(conn = conn, value = df, name = "all_cases_web")
+  
+  writexl::write_xlsx(x = x, 
+                      path = file.path(dir , paste0(basbasename, ".xlsx")),
+                      ...)
+  saveRDS(object = x ,file = file.path(dir, paste0(basbasename, ".rds")))
+  
+  return(T) 
+  
+  
+}
+
 
 
 extract_table_report <- function(df_fun,
@@ -2211,7 +2363,7 @@ extract_case_db_errs <- function(){
 extract_case_data_domestic_epi <- function(){
   extract_table_report(df_fun = get_case_data_domestic_epi, 
                        fn = path.expand( file.path(get_report_dir("qry_allcases"), 
-                                                   paste0("qry_allcases "  , format(Sys.Date() ,"%m-%d-%Y"),"_NEW_FORMAT.xlsx")#, "_SEMI_AUTOMATED.xlsx")
+                                                   paste0("qry_allcases "  , format(Sys.Date() ,"%m-%d-%Y"),"_DISCOVER.xlsx")#, "_SEMI_AUTOMATED.xlsx")
                        )),
                        report_filter = "qry_allcases", 
                        saving_func = save_file_as_excel_and_rds_file
@@ -2219,8 +2371,48 @@ extract_case_data_domestic_epi <- function(){
 }
 
 
+
+
+extract_case_data_static_file <- function(){
+  extract_table_report(df_fun = get_case_data_domestic_epi, 
+                       fn = path.expand( file.path(get_report_dir("static_file"), 
+                                                   paste0("qry_allcases_current.rds")#, "_SEMI_AUTOMATED.xlsx")
+                       )),
+                       report_filter = "static_file", 
+                       saving_func = save_file_as_excel_and_rds_file
+  )
+}
+
+  
+
+extract_case_data_static_file_web <- function(){
+  extract_table_report(df_fun = get_case_data_web_epi, 
+                       fn = path.expand( file.path(get_report_dir("static_file_web"), 
+                                                   paste0("all_cases_web_current.rds")#, "_SEMI_AUTOMATED.xlsx")
+                       )),
+                       report_filter = "static_file_web", 
+                       saving_func = save_file_as_excel_and_rds_file
+  )
+}
+
+
+
+
+
+
+
+
+
 extract_case_data_domestic_survelance <- function(){
   extract_table_report(df_fun = get_domestic_survelance, 
+                       fn = path.expand( file.path(get_report_dir("Domestic surveillance"), 
+                                                   paste0("Domestic surveillance data - "  , format(Sys.Date() ,'%Y-%m-%d'),"_DISCOVER.xlsx")#, "_SEMI_AUTOMATED.xlsx")
+                       )),
+                       report_filter = "Domestic surveillance"
+  )
+}
+extract_case_data_domestic_survelance_OLD <- function(){
+  extract_table_report(df_fun = get_domestic_survelance_OLD, 
                        fn = path.expand( file.path(get_report_dir("Domestic surveillance"), 
                                                    paste0("Domestic surveillance data - "  , format(Sys.Date() ,"%Y-%m-%d"),"_NEW_FORMAT.xlsx")#, "_SEMI_AUTOMATED.xlsx")
                        )),
@@ -2228,10 +2420,9 @@ extract_case_data_domestic_survelance <- function(){
   )
 }
 
-
 extract_case_data_get_HCDaily <- function(){
   
-  fn = paste0(format(Sys.Date() ,"%Y%m%d"), "_HCDaily_NEW_FORMAT.xlsx")#_SEMI_AUTOMATED.xlsx")
+  fn = paste0(format(Sys.Date() ,"%Y%m%d"), "_HCDaily_DISCOVER.xlsx")#_SEMI_AUTOMATED.xlsx")
   full_fn = path.expand( file.path(get_report_dir("HCDaily"), fn))
   
   
@@ -2250,11 +2441,32 @@ extract_case_data_get_HCDaily <- function(){
 extract_case_data_get_DataHub <- function(){
   
   # fn = paste0(format(Sys.Date() ,"%Y%m%d"), "_DataHub_NEW_FORMAT.xlsx")#_SEMI_AUTOMATED.xlsx")
-  fn = paste0("current_DataHub_NEW_FORMAT.xlsx")#_SEMI_AUTOMATED.xlsx")
+  fn = paste0("current_DataHub.xlsx")#_SEMI_AUTOMATED.xlsx")
   full_fn = path.expand( file.path(get_report_dir("DataHub"), fn))
   
   
   extract_table_report(df_fun = get_DataHub, 
+                       fn = full_fn,
+                       report_filter = "DataHub",
+                       save_type = get_report_save_type("DataHub")
+  )
+  
+  
+  
+  
+}
+
+
+
+
+extract_case_data_get_DataHub_OLD <- function(){
+  
+  # fn = paste0(format(Sys.Date() ,"%Y%m%d"), "_DataHub_NEW_FORMAT.xlsx")#_SEMI_AUTOMATED.xlsx")
+  fn = paste0("current_DataHub_NEW_FORMAT.xlsx")#_SEMI_AUTOMATED.xlsx")
+  full_fn = path.expand( file.path(get_report_dir("DataHub"), fn))
+  
+  
+  extract_table_report(df_fun = get_DataHub_OLD, 
                        fn = full_fn,
                        report_filter = "DataHub",
                        save_type = get_report_save_type("DataHub")
@@ -2268,7 +2480,7 @@ extract_case_data_get_DataHub <- function(){
 
 
 extract_case_data_get_StatsCan <- function(){
-  fn = paste0("Weekly Extended Dataset_", format(Sys.Date() ,"%Y%m%d"),"_NEW_FORMAT.xlsx")#, "_SEMI_AUTOMATED.xlsx")
+  fn = paste0("Weekly Extended Dataset_", format(Sys.Date() ,"%Y%m%d"),"_DISCOVER.xlsx")#, "_SEMI_AUTOMATED.xlsx")
   full_fn = path.expand( file.path(get_report_dir("STATCAN"), fn))
   
   extract_table_report(df_fun = get_StatsCan, 
@@ -2279,9 +2491,32 @@ extract_case_data_get_StatsCan <- function(){
   
   
 }
+extract_case_data_get_StatsCan_OLD <- function(){
+  fn = paste0("Weekly Extended Dataset_", format(Sys.Date() ,"%Y%m%d"),"_NEW_FORMAT.xlsx")#, "_SEMI_AUTOMATED.xlsx")
+  full_fn = path.expand( file.path(get_report_dir("STATCAN"), fn))
+  
+  extract_table_report(df_fun = get_StatsCan_OLD, 
+                       fn = full_fn,
+                       report_filter = "STATCAN"
+  )
+  
+  
+  
+}
 
 extract_case_data_get_WHO <- function(){
   extract_table_report(df_fun = get_WHO, 
+                       #password = keyring::key_get(),
+                       fn = path.expand( file.path(get_report_dir("WHO"), 
+                                                   paste0("Canada_COVID19_WHO_linelist-", format(Sys.Date() ,"%d%B%Y"),".xlsx")#, "_SEMI_AUTOMATED.xlsx")
+                       )),
+                       report_filter = "WHO"
+  )
+  
+}
+
+extract_case_data_get_WHO_OLD <- function(){
+  extract_table_report(df_fun = get_WHO_OLD, 
                        #password = keyring::key_get(),
                        fn = path.expand( file.path(get_report_dir("WHO"), 
                                                    paste0("Canada_COVID19_WHO_linelist-", format(Sys.Date() ,"%d%B%Y"),"_NEW_FORMAT.xlsx")#, "_SEMI_AUTOMATED.xlsx")
@@ -2343,12 +2578,12 @@ extract_case_data_get_metabase_diff <- function(){
   }
   
   library(metabaser)
-  META_BASE_HRE_URL <- "https://discover-metabase.hres.ca/api"
+  #META_BASE_HRE_URL <- "https://discover-metabase.hres.ca/api"
   #META_BASE_HRE_URL <- "https://discover-evh1.hres.ca/api"
-  META_BASE_HRE_CASES_DB_ID <- 2
-  META_BASE_HRE_USER_NAME <- keyring::key_get("username_for_meta_base_on_HRE") #"howard.swerdfeger@canada.ca"
-  META_BASE_HRE_PASSWORD <- keyring::key_get("password_for_meta_base_on_HRE")
-  
+  # META_BASE_HRE_CASES_DB_ID <- 2
+  # META_BASE_HRE_USER_NAME <- keyring::key_get("username_for_meta_base_on_HRE") #"howard.swerdfeger@canada.ca"
+  # META_BASE_HRE_PASSWORD <- keyring::key_get("password_for_meta_base_on_HRE")
+  # 
   metabase_handle <- metabase_login(base_url = META_BASE_HRE_URL,
                                     database_id = META_BASE_HRE_CASES_DB_ID,
                                     username = META_BASE_HRE_USER_NAME,
@@ -2738,24 +2973,31 @@ backup_db <- function(full_fn = file.path(DIR_OF_DB_2_BACK_UP, NAME_DB_2_BACK_UP
 
 do_end_of_day_tasks <- function(){
   get_email_sentence()
+  get_email_sentence_OLD()
   #backup_db()
   extract_case_db_errs()
   extract_case_data_get_StatsCan()
+  extract_case_data_get_StatsCan_OLD()
+  extract_case_data_static_file() 
+  extract_case_data_static_file_web()
+  
   extract_case_data_domestic_epi()
   
   extract_case_data_domestic_survelance()
-  extract_case_data_get_HCDaily()
-  extract_case_data_get_DataHub()
+  extract_case_data_domestic_survelance_OLD()
+  extract_case_data_get_HCDaily() 
+  extract_case_data_get_DataHub() 
+  extract_case_data_get_DataHub_OLD() 
   extract_case_data_get_WHO()
-  
-  extract_case_data_get_completness_analysis()
-  extract_case_data_Count_Summary()
+  extract_case_data_get_WHO_OLD()
+  #extract_case_data_get_completness_analysis()
+  #extract_case_data_Count_Summary()
   
   extract_case_data_get_ijn()
   
   get_email_sentence()
   
-  extract_case_data_get_metabase_diff()
+  #extract_case_data_get_metabase_diff()
   # extract_positives_by_age_prov()
   # extract_epi_curves()
   # extract_percent_by_time()
