@@ -13,7 +13,8 @@ library(writexl)
 library(readxl)
 library(glue)
 library(lubridate)
-
+library(AzureStor)
+library(haven)
 
 CONFIG_FILE <- "metabase_extracts.xlsx"
 META_BASE_HRE_URL <- "https://discover-metabase.hres.ca/api"
@@ -56,8 +57,6 @@ metabase_cache_clear <- function(){
   gc()
 }
 
-
-
 save_azure <- function(df, 
                        full_fn, 
                        AZURE_KEY = keyring::key_get("DataHub"), 
@@ -90,6 +89,20 @@ save_azure <- function(df,
                          )
   
 }
+
+
+
+
+
+save_sas7bdat <- function(df, full_fn, max_nchar_col_nm = 32){
+  #'
+  #'
+
+  df %>% 
+    rename_all(function(x){substr(x,1,max_nchar_col_nm)}) %>%
+    haven::write_sas(data = . , path = full_fn)
+}
+
 
 
 
@@ -199,6 +212,17 @@ remove_pt_cols <- function(df){
   #'  
   
   df %>% select(-pt)
+}
+
+
+
+keep_only_trend_epi_cols <- function(df){
+  #'
+  #'  keep only trend epi cols
+  #'  
+  #'   TODO:  labspecimencollectiondate is not in it fix when it is 
+  #'  
+  df %>% select(phacid, phacreporteddate, episodedate, pt, age, agegroup10, agegroup20, onsetdate, earliestlabcollectiondate, sex, gender, sexgender, coviddeath, hosp, icu, exposure_cat) 
 }
 
 
@@ -401,9 +425,9 @@ extracts <- function(confic_fn = CONFIG_FILE){
     
     
     
+    
     saving_func <- func_from_string(str_func = instruct[[i, "saving_func"]] , default_func = write_xlsx)
 
-    
     
     metabase_extract(
             sql_str = sql_str,
