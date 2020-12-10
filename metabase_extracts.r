@@ -269,6 +269,8 @@ count_summary <- function(df,
   a_tbl_mn <- 
     a_tbl %>% 
     select(matches("date")) %>% #mutate(detectedatentry = as.Date(detectedatentry))
+    select(-matches("week")) %>%
+    select(-matches("detectedatentry")) %>%
     mutate_all(as.Date, tryFormats = "%Y-%m-%d") %>% 
     #select_if(is.Date) %>%
     mutate_all(lubridate::month) %>% 
@@ -277,6 +279,8 @@ count_summary <- function(df,
   a_tbl_wk <- 
     a_tbl %>% 
     select(matches("date")) %>%
+    select(-matches("week")) %>%
+    select(-matches("detectedatentry")) %>%
     mutate_all(as.Date, tryFormats = "%Y-%m-%d") %>% 
     select_if(is.Date) %>%
     mutate_all(lubridate::week) %>% 
@@ -285,6 +289,8 @@ count_summary <- function(df,
   a_tbl_dow <- 
     a_tbl %>% 
     select(matches("date")) %>%
+    select(-matches("week")) %>%
+    select(-matches("detectedatentry")) %>%
     mutate_all(as.Date, tryFormats = "%Y-%m-%d") %>% 
     select_if(is.Date) %>%
     mutate_all(lubridate::wday) %>% 
