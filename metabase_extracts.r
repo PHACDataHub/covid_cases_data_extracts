@@ -172,6 +172,161 @@ do_something <- function(df){
 }
 
 
+make_data_hub <- function(df,
+                          cols2keep = 
+                            c( "episodedate"    ,      "classification" ,      "pt"       ,            "sexgender"     ,           
+                           "agegroup10"   ,        "age"                 , "occupation"   ,       "occupationhcw" ,      
+                           "ltc_resident"  ,       "asymptomatic2"        ,"onsetdate"     ,      "asymptomatic"   ,     
+                           "symcough"       ,      "symfever"           ,  "symchills"       ,     "symsorethroat"   ,    
+                           "symrunnynose"    ,     "symshortnessofbreath", "symnausea"        ,    "symheadache"      ,   
+                           "symweakness"      ,    "sympain"              ,"symirritability"   ,   "symdiarrhea"       ,  
+                           "symother"          ,   "symotherspec"         ,"hospstatus"         ,  "exposure_cat"      , 
+                           "disposition"       ,  "recoverydate"        ,"last_refreshed" ), 
+                          to_impute = c("onsetdate","episodedate"),   
+                          to_impute_from = c("phacreporteddate", "reporteddate", "onsetdate", "earliestlabcollectiondate", "earliestlabtestresultdate", "episodedate")
+  )
+  {
+  #df <-  metabase_query_cache("select * from all_cases;")
+  #a <- df %>% do_impute_dates(to_impute = to_impute, to_impute_from = to_impute_from) 
+  df %>% 
+    do_impute_dates(to_impute = to_impute, to_impute_from = to_impute_from) %>% 
+    select(cols2keep, matches("_Imputed")) 
+  
+}
+
+
+
+
+
+
+
+
+get_deltas_dates <- function(df,
+                             colforcompare = "onsetdate",
+                             cols_dts = df %>% select_if(function(x){is(x, class2 = "POSIXct")}) %>% colnames(),
+                             units = "days",
+                             min_frac = 0.5){
+  #' what are the deltas of all the relevent columns
+  
+  map_dfc(grep(pattern = colforcompare,  x = cols_dts ,value = T , invert = T), function(curr_col){
+    newcolnm <- paste0(colforcompare, "_2_", curr_col)
+    
+    x = as.integer(difftime(df[[curr_col]], df[[colforcompare]], units = units))
+    if (sum(is.na(x))*(1/min_frac) < length(x)){
+      x = replace(x, is.na(x), values = sample(x = x[!is.na(x)], size = sum(is.na(x)), replace = T))
+    }else{
+      x = rep(NA, length(x))
+      
+    }
+    tibble(col = x
+    ) %>%
+      rename(!!sym(newcolnm) := col)
+  })
+}
+
+
+
+
+
+
+#df <- metabase_query_cache("select * from all_cases limit 2000;")
+make_imputed_date <- function(df,
+                              date_col_nm,
+                              to_impute_from
+                              #date_col_nm_patern = "date"
+){
+  #df %>% impute_deltas() %>% view()
+  df <- 
+    df %>% 
+    mutate_at(vars(to_impute_from), as.Date)
+  
+  
+  cols_dts <- df %>% 
+    select(to_impute_from) %>% colnames()
+    #select_if(function(x){is(x, class2 = "POSIXct") | is.Date(x)}) %>% colnames()
+  
+  df3 <-
+    bind_cols(df %>% select(!!sym(date_col_nm)),
+              get_deltas_dates(df = df, colforcompare = date_col_nm, cols_dts = cols_dts))
+  
+  
+  cols_to_use <- 
+    map_dfc( df3 %>% select(starts_with(date_col_nm)) %>% select_if(is.numeric), function(x) {
+      quantile(x, probs = c(0.95), na.rm = T) - quantile(x, probs = c(0.05), na.rm = T)
+    }) %>% sort() %>% colnames()  
+  
+  #df[[date_col_nm]] <- as.Date(df[[date_col_nm]])
+  x <- df3[[date_col_nm]]
+  
+  #x%>% is.na() %>% sum()
+  for (c_nm in cols_to_use){
+    col_2_nm <- gsub(paste0(date_col_nm, "_2_"), "",c_nm)
+    x <-
+      if_else(!is.na(x), x ,
+              if_else(!is.na(df3[[c_nm]]), 
+                      as.Date(df[[col_2_nm]] - df3[[c_nm]], origin="1970-01-01"),
+                      as.Date(NA)
+              )
+      )  
+    #print(x %>% is.na() %>% sum() )
+    
+  }
+  
+  
+  return(x) 
+}
+
+
+
+#df2 <- metabase_query_cache("select * from all_cases")
+#df2 %>% do_impute_dates()
+
+do_impute_dates <- function(df2, 
+                            to_impute = c("onsetdate","episodedate"),   
+                            to_impute_from = c("phacreporteddate", "reporteddate", "onsetdate", "earliestlabcollectiondate", "earliestlabtestresultdate", "episodedate")
+                            ){
+  #'
+  #'  adds imputed dates to the dataframe
+  #'  
+  #df_dh <- metabase_query_cache("select * from data_hub limit 100")
+  #df2 <- metabase_query_cache("select * from all_cases limit 100") 
+  
+  #df2 <- df
+  pts <- df2 %>% distinct(pt) %>% pull()
+  
+  df2 <- 
+    df2 %>% 
+    mutate_at(vars(to_impute_from, to_impute), as.Date)
+  
+  imuted_dates <- 
+    map_dfr(pts, function(curr_pt){
+      
+      df_for_impute <-
+        df2 %>% 
+        filter(pt == curr_pt) %>% 
+        select(phacid,pt,  to_impute, to_impute_from)
+      
+      
+      imuted_dates_pt <- 
+        map_dfc(to_impute, function(c_nm){make_imputed_date(df = df_for_impute, date_col_nm = c_nm, to_impute_from = to_impute_from) }) %>% 
+        set_names(to_impute) %>%
+        rename_all(function(x){paste0(x, "_imputed")}) %>% 
+        bind_cols(df_for_impute %>% select(phacid), .)
+      
+      print(curr_pt)
+      print(ncol(imuted_dates_pt))
+      return(imuted_dates_pt)
+    })    
+  
+  
+  df2 %>% 
+    left_join(., imuted_dates, by = "phacid")
+  
+  
+}
+
+
+
 
 
 
@@ -213,6 +368,8 @@ remove_pt_cols <- function(df){
   
   df %>% select(-pt)
 }
+
+
 
 
 

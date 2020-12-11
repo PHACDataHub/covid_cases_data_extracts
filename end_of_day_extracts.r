@@ -2984,7 +2984,7 @@ do_end_of_day_tasks <- function(){
   extract_case_data_domestic_epi()
   
   extract_case_data_domestic_survelance()
-  extract_case_data_domestic_survelance_OLD()
+  extract_case_data_domestic_survelance_OLD() # <- done
   extract_case_data_get_HCDaily() 
   extract_case_data_get_DataHub() 
   extract_case_data_get_DataHub_OLD() 
