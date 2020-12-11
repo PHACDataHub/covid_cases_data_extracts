@@ -384,6 +384,17 @@ keep_only_trend_epi_cols <- function(df){
 
 
 
+keep_only_web_epi_cols <- function(df){
+  #'
+  #'  keep only web epi cols
+  #'  
+  #'   
+  #'  
+  df %>% select(phacid, episodedate, episodetype, sex_excunk, exposure_cat, agegroup10, mechanicalvent, hospstatus, coviddeath, pt, last_refreshed) 
+}
+
+
+
 ########################################
 # 
 clean_str <- function(x, 
