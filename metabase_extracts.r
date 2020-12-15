@@ -390,7 +390,7 @@ keep_only_web_epi_cols <- function(df){
   #'  
   #'   
   #'  
-  df %>% select(phacid, episodedate, episodetype, sex_excunk, exposure_cat, agegroup10, mechanicalvent, hospstatus, coviddeath, pt, last_refreshed) 
+  df %>% select(phacid, episodedate, episodetype, sex_excunk, exposure_cat, agegroup10, mechanicalvent, hospstatus, coviddeath, pt) 
 }
 
 
