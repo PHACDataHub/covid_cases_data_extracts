@@ -1,7 +1,7 @@
 
 
-rm(list=ls())
-gc()
+#rm(list=ls())
+#gc()
 
 
 library(tidyverse)
@@ -232,7 +232,8 @@ get_deltas_dates <- function(df,
 #df <- metabase_query_cache("select * from all_cases limit 2000;")
 make_imputed_date <- function(df,
                               date_col_nm,
-                              to_impute_from
+                              to_impute_from,
+                              suppress_out_of_range = TRUE
                               #date_col_nm_patern = "date"
 ){
   #df %>% impute_deltas() %>% view()
@@ -240,6 +241,8 @@ make_imputed_date <- function(df,
     df %>% 
     mutate_at(vars(to_impute_from), as.Date)
   
+  
+  to_impute_rng <- df[[date_col_nm]] %>% range(na.rm = T)
   
   cols_dts <- df %>% 
     select(to_impute_from) %>% colnames()
@@ -272,6 +275,10 @@ make_imputed_date <- function(df,
     
   }
   
+  # suppress dates that are out of the origional range
+  if (suppress_out_of_range){
+    x <- if_else(x < to_impute_rng[1] | x > to_impute_rng[2] , as.Date(NA), x)
+  }
   
   return(x) 
 }

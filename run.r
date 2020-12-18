@@ -1,5 +1,13 @@
 
 
+########################
+#Clean up stuff sto start
+rm(list=ls())
+gc()
+
+
+########################
+# functions file
 source("metabase_extracts.r")
 
 
