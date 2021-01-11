@@ -15,6 +15,7 @@ library(glue)
 library(lubridate)
 library(AzureStor)
 library(haven)
+library(keyring)
 
 CONFIG_FILE <- "metabase_extracts.xlsx"
 META_BASE_HRE_URL <- "https://discover-metabase.hres.ca/api"
@@ -108,7 +109,7 @@ save_sas7bdat <- function(df, full_fn, max_nchar_col_nm = 32){
 
 metabase_query_cache <- function(sql_str, 
                                  conn = metabase_conn(), 
-                                 ...){
+                                 col_types = cols(.default = col_character()), ...){
   #'
   #' caches results from from metabase_query
   #'
@@ -119,7 +120,7 @@ metabase_query_cache <- function(sql_str,
     return(df)
   }
   tic <- Sys.time()
-  df <- metabase_query(handle = conn, sql_str, ...)
+  df <- metabase_query(handle = conn, sql_str, col_types, ...)
   toc <- Sys.time()
   message(glue("took {toc-tic} to get {sql_str}"))
     
