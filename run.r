@@ -8,6 +8,7 @@ gc()
 
 ########################
 #Login credentials
+library(keyring)
 key_set("username_for_meta_base_on_HRE")   #,password = metabase username: user.name@canada.ca
 key_set("password_for_meta_base_on_HRE")   #,password = metabase password
 key_set("DataHub")                         #,password = refer to handover

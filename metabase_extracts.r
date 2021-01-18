@@ -15,7 +15,6 @@ library(glue)
 library(lubridate)
 library(AzureStor)
 library(haven)
-library(keyring)
 
 CONFIG_FILE <- "metabase_extracts.xlsx"
 META_BASE_HRE_URL <- "https://discover-metabase.hres.ca/api"
