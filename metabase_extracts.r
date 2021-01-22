@@ -91,7 +91,38 @@ save_azure <- function(df,
 }
 
 
-
+save_azure_modelling <- function(df, 
+                       full_fn, 
+                       AZURE_KEY = keyring::key_get("Modelling"), 
+                       saving_func = write_xlsx){
+  #' 
+  #' saves a dataframe to azure
+  #' 
+  #' 
+  
+  fn <- basename(full_fn)
+  dir <- dirname(full_fn)
+  
+  
+  #blob container
+  blob_cont <- blob_container(endpoint = dir, key=AZURE_KEY)
+  
+  #save temp file
+  saving_func(x = df,
+              path = file.path(rappdirs::user_cache_dir(), fn),
+              col_names = TRUE,
+              format_headers = TRUE,
+              use_zip64 = FALSE
+  )
+  
+  
+  #cpy to azure
+  AzureStor::upload_blob(container = blob_cont, 
+                         src = file.path(rappdirs::user_cache_dir(), fn), 
+                         dest = paste0("data/",fn)
+  )
+  
+}
 
 
 save_sas7bdat <- function(df, full_fn, max_nchar_col_nm = 32){
