@@ -94,7 +94,7 @@ save_azure <- function(df,
 save_azure_modelling <- function(df, 
                        full_fn, 
                        AZURE_KEY = keyring::key_get("Modelling"), 
-                       saving_func = write_xlsx){
+                       saving_func = write_csv){
   #' 
   #' saves a dataframe to azure
   #' 
@@ -111,8 +111,9 @@ save_azure_modelling <- function(df,
   saving_func(x = df,
               path = file.path(rappdirs::user_cache_dir(), fn),
               col_names = TRUE,
-              format_headers = TRUE,
-              use_zip64 = FALSE
+              quote_escape = FALSE
+              #format_headers = TRUE,
+              #use_zip64 = FALSE
   )
   
   
