@@ -434,6 +434,16 @@ keep_only_web_epi_cols <- function(df){
 
 
 
+keep_only_weekly_report_cols <- function(df){
+  #'
+  #'  keep only trend epi cols
+  #'  
+  #'  
+  #'  
+  df %>% select(phacid, ptcaseid, phacreporteddate, classification, pt, episodedate, earliestdate, age, agegroup10, agegroup20, sexgender, exposure_cat, hospstatus, coviddeath, disposition, last_refreshed) 
+}
+
+
 ########################################
 # 
 clean_str <- function(x, 
