@@ -487,6 +487,7 @@ count_summary <- function(df,
     a_tbl %>% 
     select(matches("date")) %>% #mutate(detectedatentry = as.Date(detectedatentry))
     select(-matches("week")) %>%
+    select(-matches("earliestdatetype"))%>%
     select(-matches("detectedatentry")) %>%
     mutate_all(as.Date, tryFormats = "%Y-%m-%d") %>% 
     #select_if(is.Date) %>%
@@ -497,6 +498,7 @@ count_summary <- function(df,
     a_tbl %>% 
     select(matches("date")) %>%
     select(-matches("week")) %>%
+    select(-matches("earliestdatetype"))%>%
     select(-matches("detectedatentry")) %>%
     mutate_all(as.Date, tryFormats = "%Y-%m-%d") %>% 
     select_if(is.Date) %>%
@@ -507,6 +509,7 @@ count_summary <- function(df,
     a_tbl %>% 
     select(matches("date")) %>%
     select(-matches("week")) %>%
+    select(-matches("earliestdatetype"))%>%
     select(-matches("detectedatentry")) %>%
     mutate_all(as.Date, tryFormats = "%Y-%m-%d") %>% 
     select_if(is.Date) %>%
@@ -921,6 +924,7 @@ get_db_error_report_by_case_future_dates<- function(a_tbl ){
     a_tbl %>% 
     select(matches("date")) %>%
     select(-matches("week")) %>%
+    select(-matches("earliestdatetype"))%>%
     select(-matches("detectedatentry")) %>%
     mutate_all(as.Date) %>% 
     select_if(is.Date) 
@@ -944,6 +948,7 @@ get_db_error_report_by_case_2020_dates<- function(a_tbl ){
     a_tbl %>% 
     select(matches("date")) %>%
     select(-matches("week")) %>%
+    select(-matches("earliestdatetype"))%>%
     select(-matches("detectedatentry")) %>%
     mutate_all(as.Date) %>% 
     select_if(is.Date) 
