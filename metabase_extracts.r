@@ -213,7 +213,7 @@ make_data_hub <- function(df,
                            "symrunnynose"    ,     "symshortnessofbreath", "symnausea"        ,    "symheadache"      ,   
                            "symweakness"      ,    "sympain"              ,"symirritability"   ,   "symdiarrhea"       ,  
                            "symother"          ,   "symotherspec"         ,"hospstatus"         ,  "exposure_cat"      , 
-                           "disposition"       ,  "recoverydate"        ,"last_refreshed" ), 
+                           "disposition"       ,  "resolutiondate"        ,"last_refreshed" ), 
                           to_impute = c("onsetdate","episodedate"),   
                           to_impute_from = c("phacreporteddate", "reporteddate", "onsetdate", "earliestlabcollectiondate", "earliestlabtestresultdate", "episodedate")
   )
@@ -773,16 +773,16 @@ get_db_error_report_by_case_vent<- function(a_tbl){
     select(phacid, err) %>% 
     mutate(typ = "vent" )
 }
-get_db_error_report_by_case_Reovered<- function(a_tbl){
+get_db_error_report_by_case_resolved<- function(a_tbl){
   a_tbl %>% 
-    select(phacid, disposition, recoverydate) %>% 
+    select(phacid, disposition, resolutiondate) %>% 
     #filter(tolower(Hosp) == "no" | tolower(Hosp) == "unknown" | Hosp == "") %>% 
-    filter(!tolower(disposition) == "recovered") %>% 
-    filter(! is.na(recoverydate) ) %>% 
-    select(phacid, recoverydate, disposition) %>% 
-    mutate(err = paste0("Recovery date of '",recoverydate,"' is listed but disposition is '", disposition, "'") ) %>% 
+    filter(!tolower(disposition) == "resolved") %>% 
+    filter(! is.na(resolutiondate) ) %>% 
+    select(phacid, resolutiondate, disposition) %>% 
+    mutate(err = paste0("Resolution date of '",resolutiondate,"' is listed but disposition is '", disposition, "'") ) %>% 
     select(phacid, err)  %>% collect() %>% 
-    mutate(typ = "Recovery date listed but not recovered" )
+    mutate(typ = "Resolution date listed but not resolved" )
 }
 get_db_error_report_by_case_Death<- function(a_tbl ){
   a_tbl %>% 
@@ -849,11 +849,11 @@ get_db_error_report_by_case_Dead_and_alive<- function(a_tbl ){
   #' Returns error report related to cases both dead and alive
   #' 
   a_tbl %>% 
-    filter( (! is.na(deathdate)) &  (! is.na(recoverydate)) ) %>% 
-    select(phacid, deathdate, recoverydate) %>% 
-    mutate(err = paste0("Both Death date '",deathdate,"' and recovery date '",recoverydate,"' listed.") ) %>% 
+    filter( (! is.na(deathdate)) &  (! is.na(resolutiondate)) ) %>% 
+    select(phacid, deathdate, resolutiondate) %>% 
+    mutate(err = paste0("Both Death date '",deathdate,"' and resolution date '",resolutiondate,"' listed.") ) %>% 
     select(phacid, err)  %>% collect() %>% 
-    mutate(typ = "Both Death date and recovery date listed." )
+    mutate(typ = "Both Death date and resolution date listed." )
 }
 
 get_db_error_report_by_case_dead_before_onset<- function(a_tbl ){
@@ -867,14 +867,14 @@ get_db_error_report_by_case_dead_before_onset<- function(a_tbl ){
 }
 
 
-get_db_error_report_by_case_recovered_before_onset<- function(a_tbl ){
+get_db_error_report_by_case_resolved_before_onset<- function(a_tbl ){
   a_tbl %>% 
-    filter( (! is.na(recoverydate)) &  (! is.na(onsetdate)) ) %>% 
-    filter( recoverydate < onsetdate) %>% 
-    select(phacid, recoverydate, onsetdate) %>% 
-    mutate(err = paste0("Recovered before Onset '",recoverydate,"' < '",onsetdate,"'") ) %>% 
+    filter( (! is.na(resolutiondate)) &  (! is.na(onsetdate)) ) %>% 
+    filter( resolutiondate < onsetdate) %>% 
+    select(phacid, resolutiondate, onsetdate) %>% 
+    mutate(err = paste0("Resolved before Onset '",resolutiondate,"' < '",onsetdate,"'") ) %>% 
     select(phacid, err)  %>% collect() %>% 
-    mutate(typ = "Early Recovered" )
+    mutate(typ = "Early resolution" )
 }
 
 
@@ -972,7 +972,7 @@ get_db_error_report_by_case_still_sick<- function(a_tbl ){
   a_tbl %>% 
     select(classification, disposition, phacid, onsetdate, reporteddate) %>% 
     filter(classification %in% c("confirmed", "probable")) %>%
-    filter(! disposition %in% c("deceased", "recovered")) %>%
+    filter(! disposition %in% c("deceased", "resolved")) %>%
     mutate(onsetdate = as.Date(onsetdate)) %>% 
     filter(onsetdate <= Sys.Date() - 30*5) %>% 
     mutate(err = paste0("Onset Date ",onsetdate," is ",Sys.Date()- onsetdate," days ago....Thats a lot, maybe verify this with the pt?") ) %>% 
@@ -984,7 +984,7 @@ get_db_error_report_by_case_still_sick_reported<- function(a_tbl ){
   a_tbl %>% 
     select(classification, disposition, phacid, onsetdate, reporteddate) %>% 
     filter(classification %in% c("confirmed", "probable")) %>%
-    filter(! disposition %in% c("deceased", "recovered")) %>%
+    filter(! disposition %in% c("deceased", "resolved")) %>%
     mutate(reporteddate = as.Date(reporteddate)) %>% 
     
     filter(reporteddate <= Sys.Date() - 30*5) %>% 
@@ -1024,11 +1024,11 @@ db_error_report_by_case <- function(a_tbl){
       get_db_error_report_by_case_ICU(a_tbl = a_tbl), 
       get_db_error_report_by_case_Isolation(a_tbl = a_tbl), 
       get_db_error_report_by_case_vent(a_tbl = a_tbl),
-      get_db_error_report_by_case_Reovered(a_tbl = a_tbl),
+      get_db_error_report_by_case_resolved(a_tbl = a_tbl),
       get_db_error_report_by_case_Death(a_tbl = a_tbl),
       get_db_error_report_by_case_Dead_and_alive(a_tbl = a_tbl),
       get_db_error_report_by_case_dead_before_onset(a_tbl = a_tbl),
-      get_db_error_report_by_case_recovered_before_onset(a_tbl = a_tbl),
+      get_db_error_report_by_case_resolved_before_onset(a_tbl = a_tbl),
       get_db_error_report_by_case_travel(a_tbl = a_tbl),
       get_db_error_report_by_case_teasting_CloseContact_disagree(a_tbl = a_tbl),
       get_db_error_report_by_case_coviddeath_disposition_disagree(a_tbl = a_tbl),
