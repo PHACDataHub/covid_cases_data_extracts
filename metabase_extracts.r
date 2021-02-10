@@ -178,7 +178,7 @@ metabase_extract <- function(sql_str = "select * from all_cases limit 100;",
   
   basename(full_fn)
   tic <- Sys.time()
-  message(glue("Begining to extract '{basename(full_fn)}', current time is '{Sys.time()}'."))
+  message(glue("Beginning to extract '{basename(full_fn)}', current time is '{Sys.time()}'."))
   
   df_raw <-metabase_query_cache(sql_str = sql_str)
   df <- adjust_func(df_raw)
