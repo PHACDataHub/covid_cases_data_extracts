@@ -402,10 +402,12 @@ func_from_string <- function(str_func, default_func = do_nothing){
 
 remove_pt_cols <- function(df){
   #'
-  #'  removes pts 
+  #'  removes pt col
+  #'  adjust date and number variable formats
   #'  
-  
-  df %>% select(-pt)
+  df %>% select(-pt) %>%
+    mutate(across(.cols = c(episodedate, onsetdate2, resolutiondate2), .fns = as.Date)) %>%
+    mutate(across(.cols = c(age), .fns = as.integer))
 }
 
 
@@ -415,10 +417,12 @@ remove_pt_cols <- function(df){
 keep_only_trend_epi_cols <- function(df){
   #'
   #'  keep only trend epi cols
-  #'  
+  #'  adjust date and number variable formats
   #'   TODO:  labspecimencollectiondate is not in it fix when it is 
   #'  
-  df %>% select(phacid, phacreporteddate, episodedate, pt, age, agegroup10, agegroup20, onsetdate, earliestlabcollectiondate, sex, gender, sexgender, coviddeath, hosp, icu, exposure_cat) 
+  df %>% select(phacid, phacreporteddate, episodedate, pt, age_years, agegroup10, agegroup20, onsetdate, earliestlabcollectiondate, sex, gender, sexgender, coviddeath, hosp, icu, exposure_cat) %>%
+    mutate(across(.cols = c(phacreporteddate, episodedate, onsetdate, earliestlabcollectiondate), .fns = as.Date)) %>%
+    mutate(across(.cols = c(age_years), .fns = as.integer))
 }
 
 
@@ -426,21 +430,80 @@ keep_only_trend_epi_cols <- function(df){
 keep_only_web_epi_cols <- function(df){
   #'
   #'  keep only web epi cols
-  #'  
+  #'  adjust date and number variable formats
   #'   
   #'  
-  df %>% select(phacid, episodedate, episodetype, sex_excunk, exposure_cat, agegroup10, mechanicalvent, hospstatus, coviddeath, pt, last_refreshed) 
+  df %>% select(phacid, episodedate, episodetype, sex_excunk, exposure_cat, agegroup10, mechanicalvent, hospstatus, coviddeath, pt, last_refreshed) %>%
+    mutate(across(.cols = c(episodedate), .fns = as.Date))
 }
 
 
 
 keep_only_weekly_report_cols <- function(df){
   #'
-  #'  keep only trend epi cols
+  #'  keep only weekly report cols
+  #'  adjust date and number variable formats
+  #'  
+  #'  
+  df %>% select(phacid, ptcaseid, phacreporteddate, classification, pt, episodedate, earliestdate, age, agegroup10, agegroup20, sexgender, exposure_cat, hospstatus, coviddeath, disposition, last_refreshed) %>%
+    mutate(across(.cols = c(phacreporteddate, episodedate, earliestdate), .fns = as.Date)) %>%
+    mutate(across(.cols = c(age), .fns = as.integer))
+}
+
+
+
+who_cols_formatting <- function(df){
+  #'
+  #'  adjust date and number variable formats
   #'  
   #'  
   #'  
-  df %>% select(phacid, ptcaseid, phacreporteddate, classification, pt, episodedate, earliestdate, age, agegroup10, agegroup20, sexgender, exposure_cat, hospstatus, coviddeath, disposition, last_refreshed) 
+  df %>% mutate(across(.cols = c(report_date,	report_pointofentry_date,	patcourse_dateonset,	patcourse_dateonset_unk,	patcourse_preshcf,	patcourse_dateiso,	patcourse_datedeath,	
+                                 expo_travel_date1,	expo_travel_date2,	expo_travel_date3,	expo_case_date_first1,	expo_case_date_last1,	expo_case_date_first2,	expo_case_date_last2,	
+                                 expo_case_date_first3,	expo_case_date_last3,	expo_case_date_first4,	expo_case_date_last4,	expo_case_date_first5,	expo_case_date_last5, lab_date1), .fns = as.Date)) %>%
+    mutate(across(.cols = c(patinfo_ageonset), .fns = as.integer))
+}
+
+
+
+dashboard_and_epi_cols_formatting <- function(df){
+  #'
+  #'  adjust date and number variable formats
+  #'  
+  #'  
+  #'  
+  df %>%
+    mutate(across(.cols = c(phacreporteddate, reporteddate,	dateofentry,	onsetdate,	episodedate,	earliestdate, hospstartdate,	hospenddate,	icustartdate,	icuenddate,	
+                            isolationstartdate,	isolationenddate,	ventstartdate,	ventenddate,	resolutiondate,	deathdate,	earliestlabtestresultdate,	
+                            earliestlabcollectiondate,	earliestfirstcontactdate,	latestcontactdate), .fns = as.Date)) %>%
+    mutate(across(.cols = c(phacreporteddate_epiweek, onsetdate_epiweek,	episodedate_epiweek, labtestresultdate_epiweek,labspecimencollectiondate_epiweek), .fns = as.numeric)) %>%
+    mutate(across(.cols = c(age, age_years, exposure_linked, numberofcontacts, rfcount, comp_riskfactors, symcount), .fns = as.integer))
+}
+
+
+
+statcan_cols_formatting <- function(df){
+  #'
+  #'  adjust date and number variable formats
+  #'  
+  #'  
+  #'  
+  df %>%
+    mutate(across(.cols = c(episodedate, onsetdate2, resolutiondate2), .fns = as.Date)) %>%
+    mutate(across(.cols = c(age), .fns = as.integer))
+}
+
+
+
+modelling_cols_formatting <- function(df){
+  #'
+  #'  adjust date and number variable formats
+  #'  
+  #'  
+  #'  
+  df %>% mutate(across(.cols = c(reporteddate, onsetdate, earliestlabcollectiondate, earliestlabtestresultdate, phacreporteddate, hospstartdate, hospenddate, dateofentry, icustartdate, 
+                                 icuenddate, isolationstartdate, isolationenddate, ventstartdate, ventenddate, resolutiondate, deathdate, earliestfirstcontactdate), .fns = as.Date)) %>%
+    mutate(across(.cols = c(age, numberofcontacts), .fns = as.integer))
 }
 
 
