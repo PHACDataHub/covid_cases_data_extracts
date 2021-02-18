@@ -452,22 +452,13 @@ keep_only_weekly_report_cols <- function(df){
 
 
 
-keep_only_who_cols <- function(df){
+who_cols_formatting <- function(df){
   #'
   #'  adjust date and number variable formats
   #'  
   #'  
   #'  
-  df %>% select(report_date,	report_country,	report_test_reason,							
-                report_test_reason_other,	patinfo_ID,	patinfo_ageonset,	patinfo_ageonsetunit,	patinfo_sex,	patinfo_idadmin0,	patinfo_idadmin1,	patinfo_resadmin0,	Lab_date1,	patcourse_asymp,
-                patcourse_dateonset,	Comcond_present,	Comcond_preg,	Comcond_pregt,	Comcond_partum,	Comcond_immuno,	Comcond_cardi,	Comcond_diabetes,	Comcond_liver,	Comcond_renal,
-                Comcond_neuro,	Comcond_malig,	Comcond_lung,	Comcond_other,	patcourse_admit,	patcourse_presHCF,	patcourse_icu,	patcourse_vent,	patcourse_ecmo,	patcourse_iso,
-                patcourse_dateiso,	patinfo_occuhcw,	patinfo_occuhcw_country,	patinfo_occuhcw_city,	patinfo_occuhcw_name,	expo_travel,	expo_travel_country1,	expo_travel_city1,	expo_travel_date1,	expo_travel_country2,
-                expo_travel_city2,	expo_travel_date2,	expo_travel_country3,	expo_travel_city3,	expo_travel_date3,	expo_visit_healthcare,	expo_contact_case,	expo_case_setting_detail,	expo_ID1,	expo_case_date_first1,
-                expo_case_date_last1,	expo_ID2,	expo_case_date_first2,	expo_case_date_last2,	expo_ID3,	expo_case_date_first3,	expo_case_date_last3,	expo_ID4,	expo_case_date_first4,	expo_case_date_last4,
-                expo_ID5,	expo_case_date_first5,	expo_case_date_last5,	expo_case_location,	outcome_submitted_date,	outcome_asymp,	outcome_onset_symptom,	outcome_patcourse_admit,	outcome_patcourse_presHCF,	outcome_patcourse_icu,
-                outcome_patcourse_vent,	outcome_patcourse_ecmo,	outcome_patcourse_status,	outcome_patcourse_status_other,	outcome_date_of_outcome,	outcome_lab_date,	outcome_lab_result,	outcome_contacts_followed,	outcome_contacts_followed_unknown,	type_case_classification) %>%
-    mutate(across(.cols = c(report_date,	patcourse_dateonset,	patcourse_preshcf,	patcourse_dateiso,
+  df %>% mutate(across(.cols = c(report_date,	report_pointofentry_date,	patcourse_dateonset,	patcourse_dateonset_unk,	patcourse_preshcf,	patcourse_dateiso,	patcourse_datedeath,
                                  expo_travel_date1,	expo_travel_date2,	expo_travel_date3,	expo_case_date_first1,	expo_case_date_last1,	expo_case_date_first2,	expo_case_date_last2,	
                                  expo_case_date_first3,	expo_case_date_last3,	expo_case_date_first4,	expo_case_date_last4,	expo_case_date_first5,	expo_case_date_last5, lab_date1), .fns = as.Date)) %>%
     mutate(across(.cols = c(patinfo_ageonset), .fns = as.integer))
