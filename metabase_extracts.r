@@ -215,7 +215,7 @@ make_data_hub <- function(df,
                            "symother"          ,   "symotherspec"         ,"hospstatus"         ,  "exposure_cat"      , 
                            "disposition"       ,  "resolutiondate"        ,"last_refreshed" ), 
                           to_impute = c("onsetdate","episodedate"),   
-                          to_impute_from = c("phacreporteddate", "reporteddate", "onsetdate", "earliestlabcollectiondate", "earliestlabtestresultdate", "episodedate")
+                          to_impute_from = c("phacreporteddate", "reporteddate", "onsetdate", "earliestlabcollectiondate", "earliestlabtestresultdate", "episodedate", "earliestdate")
   )
   {
   #df <-  metabase_query_cache("select * from all_cases;")
@@ -322,7 +322,7 @@ make_imputed_date <- function(df,
 
 do_impute_dates <- function(df2, 
                             to_impute = c("onsetdate","episodedate"),   
-                            to_impute_from = c("phacreporteddate", "reporteddate", "onsetdate", "earliestlabcollectiondate", "earliestlabtestresultdate", "episodedate")
+                            to_impute_from = c("phacreporteddate", "reporteddate", "onsetdate", "earliestlabcollectiondate", "earliestlabtestresultdate", "episodedate", "earliestdate")
                             ){
   #'
   #'  adds imputed dates to the dataframe
@@ -420,8 +420,8 @@ keep_only_trend_epi_cols <- function(df){
   #'  adjust date and number variable formats
   #'   TODO:  labspecimencollectiondate is not in it fix when it is 
   #'  
-  df %>% select(phacid, phacreporteddate, episodedate, pt, age_years, agegroup10, agegroup20, onsetdate, earliestlabcollectiondate, sex, gender, sexgender, coviddeath, hosp, icu, exposure_cat) %>%
-    mutate(across(.cols = c(phacreporteddate, episodedate, onsetdate, earliestlabcollectiondate), .fns = as.Date)) %>%
+  df %>% select(phacid, phacreporteddate, episodedate, pt, age_years, agegroup10, agegroup20, onsetdate, earliestlabcollectiondate, sex, gender, sexgender, coviddeath, hosp, icu, exposure_cat, earliestdate, earliestdatetype) %>%
+    mutate(across(.cols = c(phacreporteddate, episodedate, onsetdate, earliestlabcollectiondate, earliestdate), .fns = as.Date)) %>%
     mutate(across(.cols = c(age_years), .fns = as.integer))
 }
 
@@ -445,7 +445,7 @@ keep_only_weekly_report_cols <- function(df){
   #'  adjust date and number variable formats
   #'  
   #'  
-  df %>% select(phacid, ptcaseid, phacreporteddate, classification, pt, episodedate, earliestdate, age, agegroup10, agegroup20, sexgender, exposure_cat, hospstatus, coviddeath, disposition, last_refreshed) %>%
+  df %>% select(phacid, ptcaseid, phacreporteddate, classification, pt, episodedate, earliestdate, earliestdatetype, age, agegroup10, agegroup20, sexgender, exposure_cat, hospstatus, coviddeath, disposition, last_refreshed) %>%
     mutate(across(.cols = c(phacreporteddate, episodedate, earliestdate), .fns = as.Date)) %>%
     mutate(across(.cols = c(age), .fns = as.integer))
 }
