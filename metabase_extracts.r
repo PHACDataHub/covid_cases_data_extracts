@@ -213,7 +213,8 @@ make_data_hub <- function(df,
                            "symrunnynose"    ,     "symshortnessofbreath", "symnausea"        ,    "symheadache"      ,   
                            "symweakness"      ,    "sympain"              ,"symirritability"   ,   "symdiarrhea"       ,  
                            "symother"          ,   "symotherspec"         ,"hospstatus"         ,  "exposure_cat"      , 
-                           "disposition"       ,  "resolutiondate"        ,"last_refreshed" ), 
+                           "disposition"       ,  "resolutiondate"        ,"earliestdate", "earliestdatetype",
+                           "last_refreshed" ), 
                           to_impute = c("onsetdate","episodedate"),   
                           to_impute_from = c("phacreporteddate", "reporteddate", "onsetdate", "earliestlabcollectiondate", "earliestlabtestresultdate", "episodedate", "earliestdate")
   )
