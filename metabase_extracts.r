@@ -407,7 +407,7 @@ remove_pt_cols <- function(df){
   #'  adjust date and number variable formats
   #'  
   df %>% select(-pt) %>%
-    mutate(across(.cols = c(episodedate, onsetdate2, resolutiondate2), .fns = as.Date)) %>%
+    mutate(across(.cols = c(episodedate, onsetdate2, resolutiondate2, earliestdate), .fns = as.Date)) %>%
     mutate(across(.cols = c(age), .fns = as.integer))
 }
 
@@ -434,8 +434,8 @@ keep_only_web_epi_cols <- function(df){
   #'  adjust date and number variable formats
   #'   
   #'  
-  df %>% select(phacid, episodedate, episodetype, sex_excunk, exposure_cat, agegroup10, mechanicalvent, hospstatus, coviddeath, pt, last_refreshed) %>%
-    mutate(across(.cols = c(episodedate), .fns = as.Date))
+  df %>% select(phacid, episodedate, episodetype, sex_excunk, exposure_cat, agegroup10, mechanicalvent, hospstatus, coviddeath, pt, earliestdate, earliestdatetype, last_refreshed) %>%
+    mutate(across(.cols = c(episodedate, earliestdate, earliestdatetype), .fns = as.Date))
 }
 
 
@@ -461,7 +461,7 @@ who_cols_formatting <- function(df){
   #'  
   df %>% mutate(across(.cols = c(report_date,	report_pointofentry_date,	patcourse_dateonset,	patcourse_dateonset_unk,	patcourse_preshcf,	patcourse_dateiso,	patcourse_datedeath,
                                  expo_travel_date1,	expo_travel_date2,	expo_travel_date3,	expo_case_date_first1,	expo_case_date_last1,	expo_case_date_first2,	expo_case_date_last2,	
-                                 expo_case_date_first3,	expo_case_date_last3,	expo_case_date_first4,	expo_case_date_last4,	expo_case_date_first5,	expo_case_date_last5, lab_date1), .fns = as.Date)) %>%
+                                 expo_case_date_first3,	expo_case_date_last3,	expo_case_date_first4,	expo_case_date_last4,	expo_case_date_first5,	expo_case_date_last5, lab_date1, earliestdate), .fns = as.Date)) %>%
     mutate(across(.cols = c(patinfo_ageonset), .fns = as.integer))
 }
 
@@ -490,7 +490,7 @@ statcan_cols_formatting <- function(df){
   #'  
   #'  
   df %>%
-    mutate(across(.cols = c(episodedate, onsetdate2, resolutiondate2), .fns = as.Date)) %>%
+    mutate(across(.cols = c(episodedate, onsetdate2, resolutiondate2, earliestdate), .fns = as.Date)) %>%
     mutate(across(.cols = c(age), .fns = as.integer))
 }
 
@@ -503,7 +503,7 @@ modelling_cols_formatting <- function(df){
   #'  
   #'  
   df %>% mutate(across(.cols = c(reporteddate, onsetdate, earliestlabcollectiondate, earliestlabtestresultdate, phacreporteddate, hospstartdate, hospenddate, dateofentry, icustartdate, 
-                                 icuenddate, isolationstartdate, isolationenddate, ventstartdate, ventenddate, resolutiondate, deathdate, earliestfirstcontactdate), .fns = as.Date)) %>%
+                                 icuenddate, isolationstartdate, isolationenddate, ventstartdate, ventenddate, resolutiondate, deathdate, earliestfirstcontactdate, earliestdate), .fns = as.Date)) %>%
     mutate(across(.cols = c(age, numberofcontacts), .fns = as.integer))
 }
 
