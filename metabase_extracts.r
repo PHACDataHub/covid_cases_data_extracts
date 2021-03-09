@@ -446,7 +446,7 @@ keep_only_weekly_report_cols <- function(df){
   #'  adjust date and number variable formats
   #'  
   #'  
-  df %>% select(phacid, ptcaseid, phacreporteddate, classification, pt, episodedate, earliestdate, earliestdatetype, age, agegroup10, agegroup20, sexgender, exposure_cat, hospstatus, coviddeath, disposition, last_refreshed) %>%
+  df %>% select(phacid, ptcaseid, phacreporteddate, classification, pt, episodedate, earliestdate, earliestdatetype, age, ageunit, agegroup10, agegroup20, sexgender, exposure_cat, exp_country, hospstatus, coviddeath, disposition, last_refreshed) %>%
     mutate(across(.cols = c(phacreporteddate, episodedate, earliestdate), .fns = as.Date)) %>%
     mutate(across(.cols = c(age), .fns = as.integer))
 }
