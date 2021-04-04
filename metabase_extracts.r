@@ -183,7 +183,7 @@ metabase_query_cache <- function(sql_str,
     return(df)
   }
   tic <- Sys.time()
-  df <- big_metabase_query(handle = conn, sql_str, col_types, ...)
+  df <- big_metabase_query(metabase_handle = conn, sql_str, col_types, ...)
   toc <- Sys.time()
   message(glue("took {toc-tic} to get {sql_str}"))
     
