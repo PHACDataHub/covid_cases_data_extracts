@@ -57,10 +57,24 @@ metabase_cache_clear <- function(){
   gc()
 }
 
+
+save_csv <- function(df, full_fn){
+  #'
+  #'
+  
+  df %>% 
+    write_csv(path = full_fn,
+              col_names = TRUE,
+              quote_escape = FALSE,
+              na = "")
+  
+}
+
+
 save_azure <- function(df, 
                        full_fn, 
                        AZURE_KEY = keyring::key_get("DataHub"), 
-                       saving_func = write_xlsx){
+                       saving_func = write_csv){
   #' 
   #' saves a dataframe to azure
   #' 
@@ -77,8 +91,9 @@ save_azure <- function(df,
   saving_func(x = df,
               path = file.path(rappdirs::user_cache_dir(), fn),
               col_names = TRUE,
-              format_headers = TRUE,
-              use_zip64 = FALSE
+              quote_escape = FALSE
+              #format_headers = TRUE,
+              #use_zip64 = FALSE
   )
   
   
@@ -126,19 +141,6 @@ save_azure_modelling <- function(df,
 }
 
 
-save_csv <- function(df, full_fn){
-  #'
-  #'
-  
-  df %>% 
-    write_csv(path = full_fn,
-              col_names = TRUE,
-              quote_escape = FALSE,
-              na = "")
-  
-}
-
-
 save_sas7bdat <- function(df, full_fn, max_nchar_col_nm = 32){
   #'
   #'
@@ -149,6 +151,23 @@ save_sas7bdat <- function(df, full_fn, max_nchar_col_nm = 32){
 }
 
 
+#for queries surpassing metabase limit of 1048576 rows
+big_metabase_query <- function(metabase_handle, query, col_types = cols(.default = col_character())){
+  os <- 1048576 #metabase return limit as offset for SQL queries
+  query <- str_remove_all(query, "[;\n]")
+  df <- metabase_query(handle = metabase_handle, sql_query = query, col_types) 
+  
+  i <- 1
+  while (nrow(df) %% os == 0 & nrow(df) != 0) {
+    q2 <- str_glue(query, " offset {os*i} limit {os};")
+    x <- metabase_query(metabase_handle, q2, col_types = cols(.default = col_character()))
+    
+    df <- rbind(df, x)
+    i <- i+1
+  }
+  
+  df
+}
 
 
 metabase_query_cache <- function(sql_str, 
@@ -164,7 +183,7 @@ metabase_query_cache <- function(sql_str,
     return(df)
   }
   tic <- Sys.time()
-  df <- metabase_query(handle = conn, sql_str, col_types, ...)
+  df <- big_metabase_query(handle = conn, sql_str, col_types, ...)
   toc <- Sys.time()
   message(glue("took {toc-tic} to get {sql_str}"))
     
@@ -182,7 +201,7 @@ metabase_extract <- function(sql_str = "select * from all_cases limit 100;",
                     fn = glue("{substr(to_snake_case(sql_str),1,30)}_{suffix}.xlsx"),
                     full_fn = file.path(dir, fn),
                     adjust_func = do_nothing,
-                    saving_func = write_xlsx#,
+                    saving_func = save_csv#,
                     #saving_func_params = list(col_names = TRUE, format_headers = TRUE, use_zip64 = FALSE) 
                     ){
   #'
@@ -729,7 +748,7 @@ extracts <- function(confic_fn = CONFIG_FILE){
     
     
     
-    saving_func <- func_from_string(str_func = instruct[[i, "saving_func"]] , default_func = write_xlsx)
+    saving_func <- func_from_string(str_func = instruct[[i, "saving_func"]] , default_func = save_csv)
 
     
     metabase_extract(
