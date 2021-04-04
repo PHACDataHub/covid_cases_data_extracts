@@ -126,6 +126,19 @@ save_azure_modelling <- function(df,
 }
 
 
+save_csv <- function(df, full_fn){
+  #'
+  #'
+  
+  df %>% 
+    write_csv(path = full_fn,
+              col_names = TRUE,
+              quote_escape = FALSE,
+              na = "")
+  
+}
+
+
 save_sas7bdat <- function(df, full_fn, max_nchar_col_nm = 32){
   #'
   #'
