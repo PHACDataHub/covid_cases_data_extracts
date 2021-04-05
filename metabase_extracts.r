@@ -74,6 +74,40 @@ save_csv <- function(df, full_fn){
 save_azure <- function(df, 
                        full_fn, 
                        AZURE_KEY = keyring::key_get("DataHub"), 
+                       saving_func = write_xlsx){
+  #' 
+  #' saves a dataframe to azure
+  #' 
+  #' 
+  
+  fn <- basename(full_fn)
+  dir <- dirname(full_fn)
+  
+  
+  #blob container
+  blob_cont <- blob_container(endpoint = dir, key=AZURE_KEY)
+  
+  #save temp file
+  saving_func(x = df,
+              path = file.path(rappdirs::user_cache_dir(), fn),
+              col_names = TRUE,
+              #quote_escape = FALSE
+              format_headers = TRUE,
+              use_zip64 = FALSE
+  )
+  
+  
+  #cpy to azure
+  AzureStor::upload_blob(container = blob_cont, 
+                         src = file.path(rappdirs::user_cache_dir(), fn), 
+                         dest = paste0("data/",fn)
+                         )
+  
+}
+
+save_azure_csv <- function(df, 
+                       full_fn, 
+                       AZURE_KEY = keyring::key_get("DataHub"), 
                        saving_func = write_csv){
   #' 
   #' saves a dataframe to azure
@@ -101,9 +135,12 @@ save_azure <- function(df,
   AzureStor::upload_blob(container = blob_cont, 
                          src = file.path(rappdirs::user_cache_dir(), fn), 
                          dest = paste0("data/",fn)
-                         )
+  )
   
 }
+
+
+
 
 
 save_azure_modelling <- function(df, 
