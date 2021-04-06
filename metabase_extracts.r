@@ -70,6 +70,55 @@ save_csv <- function(df, full_fn){
   
 }
 
+#library(WriteXLS)
+save_xlsx <- function(df, full_fn){
+  #'
+  #'
+  
+  #df %>% 
+  #  WriteXLS(full_fn,
+  #            col.names = TRUE
+  #           )
+  
+  df %>% 
+    write_xlsx(path = full_fn,
+               col_names = TRUE,
+               format_headers = TRUE,
+               use_zip64 = FALSE)
+  
+  
+}
+
+library(arrow)
+#library(feather)
+save_feather <- function(df, full_fn){
+  #'
+  #'
+  
+  df %>% 
+    #feather::write_feather(full_fn)
+    arrow::write_feather(full_fn)
+  
+}
+
+library(DBI)
+save_db <- function(df, full_fn){############## come back to this
+  #'conn <- dbConnect(RSQLite::SQLite(), "df.db")
+  #'dbWriteTable(conn, "df", df)
+  
+  #df %>% 
+  #  write_feather(path = full_fn,
+  #                col_names = TRUE
+  #  )
+  
+  conn <- dbConnect(RSQLite::SQLite(), full_fn)
+  dbWriteTable(conn, 
+               "df" , 
+               df, 
+               overwrite =TRUE)
+  
+}
+
 
 save_azure <- function(df, 
                        full_fn, 
