@@ -439,6 +439,16 @@ keep_only_trend_epi_cols <- function(df){
     mutate(across(.cols = c(age_years), .fns = as.integer))
 }
 
+keep_only_trendvoc_epi_cols <- function(df){
+  #'
+  #'  keep only trend epi cols
+  #'  adjust date and number variable formats
+  #'   TODO:  labspecimencollectiondate is not in it fix when it is 
+  #'  
+  df %>% select(phacid, phacreporteddate, episodedate, pt, age_years, agegroup10, agegroup20, onsetdate, earliestlabcollectiondate, sex, gender, sexgender, coviddeath, hosp, icu, exposure_cat, earliestdate, earliestdatetype, variantid, variantidentified, variantscreenresult, variantsequenceresult) %>%
+    mutate(across(.cols = c(phacreporteddate, episodedate, onsetdate, earliestlabcollectiondate, earliestdate), .fns = as.Date)) %>%
+    mutate(across(.cols = c(age_years), .fns = as.integer))
+}
 
 
 keep_only_web_epi_cols <- function(df){
