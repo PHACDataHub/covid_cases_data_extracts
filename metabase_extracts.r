@@ -15,6 +15,8 @@ library(glue)
 library(lubridate)
 library(AzureStor)
 library(haven)
+library(arrow)
+library(DBI)
 
 CONFIG_FILE <- "metabase_extracts.xlsx"
 META_BASE_HRE_URL <- "https://discover-metabase.hres.ca/api"
@@ -111,9 +113,7 @@ save_azure_modelling <- function(df,
   saving_func(x = df,
               path = file.path(rappdirs::user_cache_dir(), fn),
               col_names = TRUE,
-              quote_escape = FALSE
-              #format_headers = TRUE,
-              #use_zip64 = FALSE
+              na = ""
   )
   
   
@@ -133,7 +133,6 @@ save_csv <- function(df, full_fn){
   df %>% 
     write_csv(path = full_fn,
               col_names = TRUE,
-              quote_escape = FALSE,
               na = "")
   
 }
@@ -149,7 +148,25 @@ save_sas7bdat <- function(df, full_fn, max_nchar_col_nm = 32){
 }
 
 
+save_feather <- function(df, full_fn){
+  #'
+  #'
+  
+  df %>% 
+    arrow::write_feather(full_fn)
+  
+}
 
+
+save_db <- function(df, full_fn){
+  
+  conn <- dbConnect(RSQLite::SQLite(), full_fn)
+  dbWriteTable(conn, 
+               "df" , 
+               df, 
+               overwrite =TRUE)
+  
+}
 
 metabase_query_cache <- function(sql_str, 
                                  conn = metabase_conn(), 
