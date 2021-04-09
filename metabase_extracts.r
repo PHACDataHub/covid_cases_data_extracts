@@ -436,7 +436,7 @@ remove_pt_cols <- function(df){
   #'  removes pt col
   #'  adjust date and number variable formats
   #'  
-  df %>% select(-pt) %>%
+  df %>% select(-pt,-phacid) %>%
     mutate(across(.cols = c(episodedate, onsetdate2, resolutiondate2, earliestdate), .fns = as.Date)) %>%
     mutate(across(.cols = c(age), .fns = as.integer))
 }
