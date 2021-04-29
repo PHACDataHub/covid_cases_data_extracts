@@ -202,7 +202,7 @@ save_db <- function(df, full_fn){
 
 
 #for queries surpassing metabase limit of 1048576 rows
-big_metabase_query <- function(metabase_handle, query, col_types = cols(.default = col_character())){
+big_metabase_query_adj <- function(metabase_handle, query, col_types = cols(.default = col_character())){
   os <- 1048575 #metabase return limit as offset for SQL queries
   query <- str_remove_all(query, "[;\n]")
   df <- metabase_query(handle = metabase_handle, sql_query = query, col_types) 
@@ -233,7 +233,7 @@ metabase_query_cache <- function(sql_str,
     return(df)
   }
   tic <- Sys.time()
-  df <- big_metabase_query(metabase_handle = conn, sql_str, col_types, ...)
+  df <- big_metabase_query_adj(metabase_handle = conn, sql_str, col_types, ...)
   toc <- Sys.time()
   message(glue("took {toc-tic} to get {sql_str}"))
     
