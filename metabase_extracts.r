@@ -256,17 +256,12 @@ do_something <- function(df){
 
 make_data_hub <- function(df,
                           cols2keep = 
-                            c( "episodedate"    ,      "classification" ,      "pt"       ,            "sexgender"     ,           
-                           "agegroup10"   ,        "age"                 , "occupation"   ,       "occupationhcw" ,      
-                           "ltc_resident"  ,       "asymptomatic2"        ,"onsetdate"     ,      "asymptomatic"   ,     
-                           "symcough"       ,      "symfever"           ,  "symchills"       ,     "symsorethroat"   ,    
-                           "symrunnynose"    ,     "symshortnessofbreath", "symnausea"        ,    "symheadache"      ,   
-                           "symweakness"      ,    "sympain"              ,"symirritability"   ,   "symdiarrhea"       ,  
-                           "symother"          ,   "symotherspec"         ,"hospstatus"         ,  "exposure_cat"      , 
-                           "disposition"       ,  "resolutiondate"        ,"earliestdate", "earliestdatetype",
-                           "last_refreshed" ), 
+                            c("pt", 	"episodedate",  	"classification", 	"sexgender2", 
+                              "agegroup10", 	"age", 	"occupation2", 	"healthcare_worker2", 	
+                              "ltc_resident", 	"asymptomatic2", 	"onsetdate", 	 	
+                              "hospstatus", 	"disposition2", 	"recoverydate2", 	"exposure_cat2"), 
                           to_impute = c("onsetdate","episodedate"),   
-                          to_impute_from = c("phacreporteddate", "reporteddate", "onsetdate", "earliestlabcollectiondate", "earliestlabtestresultdate", "episodedate", "earliestdate")
+                          to_impute_from = c("phacreporteddate", "reporteddate", "onsetdate", "earliestlabcollectiondate", "earliestlabtestresultdate", "episodedate")
   )
   {
   #df <-  metabase_query_cache("select * from all_cases;")
