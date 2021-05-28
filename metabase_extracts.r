@@ -494,6 +494,15 @@ keep_only_weekly_report_cols <- function(df){
 }
 
 
+remove_retired_cols <- function(df){
+  #'
+  #'  removes pt col
+  #'  adjust date and number variable formats
+  #'  
+  df %>% select(-mincontactcaseid)
+}
+
+
 ########################################
 # 
 clean_str <- function(x, 
